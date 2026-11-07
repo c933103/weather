@@ -109,6 +109,18 @@ def main():
         svg_path.write_bytes(blob)
         bundle['chart_svg_local_path'] = str(svg_path)
         bundle['chart_svg_url'] = base+chart_svg['path']
+    for key, fname in (('table1', 'report_table1.md'), ('table2', 'report_table2.md')):
+        entry = bundle['products'].get(key)
+        if entry:
+            if entry['path'] != f'latest/{key}.md':
+                raise ValueError(f'UNEXPECTED_{key.upper()}_PATH')
+            blob = get_bytes(base+entry['path'])
+            verify_bytes(blob, entry)
+            table_path = args.out.with_name(fname)
+            table_path.parent.mkdir(parents=True, exist_ok=True)
+            table_path.write_bytes(blob)
+            bundle[f'{key}_local_path'] = str(table_path)
+            bundle[f'{key}_url'] = base+entry['path']
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(bundle, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     print(json.dumps({'date': args.target_date_jst, 'data_commit': commit,

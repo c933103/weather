@@ -53,6 +53,26 @@ def prepare(output):
         products['chart_error'] = f'{type(exc).__name__}: {exc}'
         chart_path.unlink(missing_ok=True)
         chart_path.with_suffix('.svg').unlink(missing_ok=True)
+    # The pipe tables are deterministic formatting of the calculated bundle
+    # (user, 2026-11-07: also GitHub-generatable, like the chart). A table
+    # failure never blocks the chart or the calculation.
+    table1_path = latest / 'table1.md'
+    table2_path = latest / 'table2.md'
+    table1_path.unlink(missing_ok=True)
+    table2_path.unlink(missing_ok=True)
+    try:
+        from render_tables import render_tables
+        t1, t2 = render_tables(raw, calculated)
+        table1_path.write_text(t1, encoding='utf-8')
+        table2_path.write_text(t2, encoding='utf-8')
+        products['table1'] = file_entry(table1_path)
+        products['table2'] = file_entry(table2_path)
+        products['tables_ready'] = True
+    except Exception as exc:
+        products['tables_error'] = f'{type(exc).__name__}: {exc}'
+        products['tables_ready'] = False
+        table1_path.unlink(missing_ok=True)
+        table2_path.unlink(missing_ok=True)
     manifest['products'] = products
     # Never replace the original collection quality with calculation/chart success.
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
