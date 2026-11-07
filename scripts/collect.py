@@ -210,6 +210,8 @@ def combined_temperature(ifs, extended, ens_mean=None):
         ts = source.get('time', [])
         temp = source.get('temperature_2m', [])
         weather = source.get('weather_code', [])
+        tmins = source.get('temperature_2m_min', [])
+        tmaxs = source.get('temperature_2m_max', [])
         if len(ts) != len(temp):
             continue
         cutoff = max(samples) if samples else None
@@ -218,7 +220,9 @@ def combined_temperature(ifs, extended, ens_mean=None):
             stamp = parse_time(t)
             if not numeric(value) or (cutoff is not None and stamp <= cutoff):
                 continue
-            samples[stamp] = (value, weather[i] if i < len(weather) else None, marker)
+            samples[stamp] = (value, weather[i] if i < len(weather) else None, marker,
+                              tmins[i] if i < len(tmins) and numeric(tmins[i]) else None,
+                              tmaxs[i] if i < len(tmaxs) and numeric(tmaxs[i]) else None)
             added = True
         if added:
             used.append(marker)
@@ -227,6 +231,8 @@ def combined_temperature(ifs, extended, ens_mean=None):
             'temperature_2m': [samples[t][0] for t in ordered],
             'weather_code': [samples[t][1] for t in ordered],
             'sample_model': [samples[t][2] for t in ordered],
+            'temperature_2m_min': [samples[t][3] for t in ordered],
+            'temperature_2m_max': [samples[t][4] for t in ordered],
             'model': '+'.join(used) if used else 'ecmwf_ifs_9km',
             'units': {'temperature_2m': '°C', 'weather_code': 'wmo code'},
             'tail_note': 'Cascade in reliability order: IFS 9km deterministic, then IFS '
@@ -714,6 +720,13 @@ def build_jobs(day):
                 **coord, 'models': 'ecmwf_ec46_ensemble_mean',
                 'hourly': 'temperature_2m,weather_code,temperature_2m_min,temperature_2m_max',
                 'forecast_days': 31}, True)
+            # Individual EC46 members for the tail icons: the ensemble mean's
+            # weather_code is not a categorical forecast, so daily icons past
+            # the IFS tiers come from member probabilities instead.
+            jobs[f'{key}/ec46_members'] = ('https://seasonal-api.open-meteo.com/v1/seasonal', {
+                **coord, 'models': 'ecmwf_ec46',
+                'hourly': 'precipitation,cloud_cover,snowfall',
+                'forecast_days': 31}, True)
         # Provisional grids are raw evidence, never validated urban flood forecasts.
         jobs[f'{key}/glofas_unvalidated'] = ('https://flood-api.open-meteo.com/v1/flood', {
             'latitude': lat, 'longitude': lon, 'daily': 'river_discharge,river_discharge_mean,river_discharge_max,river_discharge_p25,river_discharge_p75',
@@ -802,7 +815,7 @@ def redact_secrets(value):
 
 
 def collect(day, out):
-    from specialists import extract_snow, extract_pollen, extract_region, extract_temperature_ensemble, REGIONS
+    from specialists import extract_snow, extract_pollen, extract_region, extract_temperature_ensemble, extract_ec46_daily, REGIONS
     from coastal import collect_coastal
     now = dt.datetime.now(UTC)
     start = dt.datetime.combine(day, dt.time(6), JST).astimezone(UTC)
@@ -940,6 +953,7 @@ def collect(day, out):
             long_ifs = forecast_result(root['sources'][f'{key}/ifs_long'], 'ecmwf_ifs_9km', lat, lon)
             ens_mean = city.get('temperature_ensemble', {}).get('mean_hourly')
             city['chart_hourly'] = combined_temperature(long_ifs, extended, ens_mean)
+            city['ec46_daily'] = extract_ec46_daily(root['sources'][f'{key}/ec46_members'], zone)
             city['checks']['chart_28d'] = audit_long(city['chart_hourly'], start, chart_end)
             chart_checks.append(city['checks']['chart_28d']['ready'])
         if key in ('tokyo_minato', 'takamatsu'):

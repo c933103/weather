@@ -136,3 +136,68 @@ def extract_region(key, source, start, end, parse, numeric):
             'model': 'ecmwf_ec46_ensemble_mean_36km', 'sampling': '3x3 regional grid; native six-hour means and temperature/pressure spread',
             'limitations': 'Coarse guidance cannot resolve cyclone cores or establish precise 16-day event timing. Combine with official tracks, warnings and uncertainty.',
             'ready': len(rows) == 9 and all(c['ready'] for c in checks), 'checks': checks, 'grid_forecasts': rows}
+
+
+def extract_ec46_daily(source, tz_name):
+    """Per-day EC46 member probabilities for the chart's tail icons.
+
+    The EC46 ensemble MEAN's weather_code is not a categorical forecast: the
+    mean state is almost never completely dry, so codes derived from it read
+    as rain nearly every day (verified on the 2026-11-07 bundle: 16/16 EC46
+    days rain-coded in both chart cities). The defensible daily signal from
+    an ensemble is member probability — the share of members whose daily
+    precipitation / snowfall clears a threshold — plus the members' mean
+    daytime cloud cover for dry days. Precipitation stamps are 6-hour
+    accumulations; a stamp is counted toward its local date (one interval of
+    boundary bleed, acceptable at probability thresholds).
+    Returns {iso_date: {members, p_rain_1mm, p_rain_10mm, p_snow,
+    daytime_cloud_mean}} in the city's local time.
+    """
+    raw = source.get('response')
+    hourly = raw.get('hourly', {}) if source.get('ok') and isinstance(raw, dict) else {}
+    times = hourly.get('time', [])
+
+    def member_fields(prefix):
+        return [k for k in hourly if re.fullmatch(rf'{prefix}_member\d+', k)]
+
+    precip = member_fields('precipitation')
+    snow = member_fields('snowfall')
+    cloud = member_fields('cloud_cover')
+    if not times or not precip:
+        return {}
+    tz = ZoneInfo(tz_name)
+    stamps = []
+    for text in times:
+        parsed = dt.datetime.fromisoformat(str(text).replace('Z', '+00:00'))
+        stamps.append((parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc)).astimezone(tz))
+    days = {}
+    for i, local in enumerate(stamps):
+        days.setdefault(local.date(), []).append(i)
+
+    def daily_sums(fields, idx):
+        sums = []
+        for f in fields:
+            vals = [hourly[f][i] for i in idx
+                    if i < len(hourly[f]) and isinstance(hourly[f][i], (int, float))]
+            if vals:
+                sums.append(sum(vals))
+        return sums
+
+    out = {}
+    for day, idx in days.items():
+        ps = daily_sums(precip, idx)
+        ss = daily_sums(snow, idx)
+        clouds = []
+        for f in cloud:
+            vals = [hourly[f][i] for i in idx
+                    if i < len(hourly[f]) and isinstance(hourly[f][i], (int, float))
+                    and 9 <= stamps[i].hour <= 18]
+            if vals:
+                clouds.append(sum(vals) / len(vals))
+        out[day.isoformat()] = {
+            'members': len(ps),
+            'p_rain_1mm': round(sum(1 for v in ps if v >= 1.0) / len(ps), 3) if ps else None,
+            'p_rain_10mm': round(sum(1 for v in ps if v >= 10.0) / len(ps), 3) if ps else None,
+            'p_snow': round(sum(1 for v in ss if v >= 0.5) / len(ss), 3) if ss else None,
+            'daytime_cloud_mean': round(sum(clouds) / len(clouds), 1) if clouds else None}
+    return out

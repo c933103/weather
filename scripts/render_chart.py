@@ -66,10 +66,14 @@ def get_hourly(root, city):
         raise ValueError(f'{city}: hourly source/model is not verified as ECMWF ({model!r}).')
     if len(times) != len(values) or not times:
         raise ValueError(f'{city}: missing/inconsistent ECMWF hourly time and temperature arrays.')
+    tmins = hourly.get('temperature_2m_min') or []
+    tmaxs = hourly.get('temperature_2m_max') or []
     arr = []
-    for t,v in zip(times,values):
+    for idx,(t,v) in enumerate(zip(times,values)):
         if isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v):
-            arr.append((parse_utc(t), float(v)))
+            vmin = tmins[idx] if idx < len(tmins) and isinstance(tmins[idx], (int, float)) else None
+            vmax = tmaxs[idx] if idx < len(tmaxs) and isinstance(tmaxs[idx], (int, float)) else None
+            arr.append((parse_utc(t), float(v), vmin, vmax))
     arr = sorted(set(arr),key=lambda z:z[0])
     if len(arr) < 8:
         raise ValueError(f'{city}: not enough true time-stamped ECMWF samples.')
@@ -92,19 +96,29 @@ def enough_coverage(points, start, end):
 def extrema_by_date(points, day0, site_tz, max_days=28):
     # All extrema windows are *local* calendar day/noon windows. Their graphical
     # positions are slot indices regardless of their actual forecast hour.
+    # Points are (stamp, value, interval_min, interval_max): where the source
+    # provides per-interval extremes (EC46's temperature_2m_min/max fields),
+    # the day high / night low use them instead of the sampled values, which
+    # at 6-hourly sampling miss the sub-interval peaks of the mean series.
+    points=[(p[0],p[1],p[2] if len(p)>2 else None,p[3] if len(p)>3 else None) for p in points]
+    stripped=[(t,v) for t,v,_,_ in points]
     highs={}; night_lows={}
     for i in range(max_days):
         d=day0+timedelta(days=i)
         start=datetime.combine(d,time.min,tzinfo=site_tz).astimezone(timezone.utc)
         stop=start+timedelta(days=1)
-        ok,items=enough_coverage(points,start,stop)
-        if ok:highs[i]=max(v for _,v in items)
+        ok,_=enough_coverage(stripped,start,stop)
+        if ok:
+            window=[(v,vx) for t,v,_,vx in points if start<=t<stop]
+            highs[i]=max(vx if vx is not None else v for v,vx in window)
         # Night separating the labelled day and following day:
         # NOON THIS DAY -> NOON NEXT DAY (never calendar-day minima).
         ns=datetime.combine(d,time(12,0),tzinfo=site_tz).astimezone(timezone.utc)
         ne=ns+timedelta(days=1)
-        ok,items=enough_coverage(points,ns,ne)
-        if ok:night_lows[i]=min(v for _,v in items)
+        ok,_=enough_coverage(stripped,ns,ne)
+        if ok:
+            window=[(v,vn) for t,v,vn,_ in points if ns<=t<ne]
+            night_lows[i]=min(vn if vn is not None else v for v,vn in window)
     return highs,night_lows
 
 
@@ -216,17 +230,45 @@ def cascade_note(raws,day0=None):
     tokyo,hk=per_city['Tokyo Minato Ward'],per_city['Hong Kong']
     if not tokyo and not hk:return ''
     if tokyo==hk:
-        return f'気温データ源（信頼度の高い順に接続）：{fmt(tokyo)}'
-    parts=[]
-    if tokyo:parts.append(f'東京 {fmt(tokyo)}')
-    if hk:parts.append(f'香港 {fmt(hk)}')
-    return '気温データ源（信頼度の高い順に接続）：'+'｜'.join(parts)
+        base=f'気温データ源（信頼度の高い順に接続）：{fmt(tokyo)}'
+    else:
+        parts=[]
+        if tokyo:parts.append(f'東京 {fmt(tokyo)}')
+        if hk:parts.append(f'香港 {fmt(hk)}')
+        base='気温データ源（信頼度の高い順に接続）：'+'｜'.join(parts)
+    labels=[label for segs in per_city.values() for label,_,_ in segs]
+    if any('EC46' in label for label in labels):
+        base+='｜EC46区間はアンサンブル平均（日々の変動は抑制）・天気はメンバー確率による'
+    return base
+
+
+def ec46_probability_icon(probs):
+    """Day icon from EC46 member probabilities (see extract_ec46_daily).
+
+    Snow when at least half the members carry >= 0.5 cm; rain when at least
+    half carry >= 10 mm or >= 1 mm; a rain-leaning icon at >= 30% for 1 mm;
+    otherwise the members' mean daytime cloud cover grades the dry icon.
+    """
+    if not probs:return '―'
+    if (probs.get('p_snow') or 0)>=0.5:return '❄'
+    if (probs.get('p_rain_10mm') or 0)>=0.5 or (probs.get('p_rain_1mm') or 0)>=0.5:return '🌧'
+    if (probs.get('p_rain_1mm') or 0)>=0.3:return '🌦'
+    cloud=probs.get('daytime_cloud_mean')
+    if cloud is None:return '☁'
+    return '☀' if cloud<20 else '🌤' if cloud<50 else '⛅' if cloud<80 else '☁'
 
 
 def daily_icon(row,day,tz):
     hr=row.get('chart_hourly') or row.get('hourly') or {}
     ts=hr.get('time') or [];wc=hr.get('weather_code') or []
     if len(ts)!=len(wc):return '―'
+    # EC46-sourced days never use the ensemble mean's weather_code (it reads
+    # as rain almost every day); their icons come from member probabilities.
+    models=hr.get('sample_model') or []
+    if len(models)==len(ts):
+        day_models=[m for t,m in zip(ts,models) if parse_utc(t).astimezone(tz).date()==day]
+        if day_models and sum(1 for m in day_models if m and 'ec46' in m)>len(day_models)/2:
+            return ec46_probability_icon((row.get('ec46_daily') or {}).get(day.isoformat()))
     samples=[]
     for t,c in zip(ts,wc):
         d=parse_utc(t).astimezone(tz)
