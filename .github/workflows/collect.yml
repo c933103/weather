@@ -1,0 +1,71 @@
+name: Collect East Asia forecast data
+
+on:
+  schedule:
+    - cron: '0 20 * * *' # 05:00 JST on the following calendar day
+  workflow_dispatch:
+    inputs:
+      target_date_jst:
+        description: 'Optional report date YYYY-MM-DD; default is the next 06:00 JST report'
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths: ['scripts/**', 'tests/**', '.github/workflows/collect.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: east-asia-weather-collection
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out collector
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test coverage and failure handling
+        run: python3 -m unittest discover -s tests -v
+      - name: Collect live numerical data
+        id: collect
+        continue-on-error: true
+        env:
+          TARGET_DATE_JST: ${{ inputs.target_date_jst }}
+          CWA_API_KEY: ${{ secrets.CWA_API_KEY }}
+        run: |
+          args=()
+          if [ -n "$TARGET_DATE_JST" ]; then
+            args+=(--target-date-jst "$TARGET_DATE_JST")
+          fi
+          python3 -u scripts/collect.py "${args[@]}" --out-dir output
+      - name: Retain full raw responses and diagnostics
+        if: always() && steps.collect.outcome != 'skipped'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: weather-raw-${{ github.run_id }}
+          path: output/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Publish data and exact completeness status
+        if: always() && steps.collect.outcome != 'skipped'
+        run: python3 scripts/publish_data.py --output output
+      - name: Write collection summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          file = Path('output/latest/manifest.json')
+          text = 'Collection failed before a manifest was written.'
+          if file.exists():
+              m = json.loads(file.read_text())
+              text = f'Report date: {m["target_date_jst"]}\n\n```json\n{json.dumps(m["quality"], indent=2)}\n```'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write(text + '\n')
+          PY
+      - name: Fail if required numerical input coverage is missing
+        if: steps.collect.outcome == 'failure'
+        run: exit 1
