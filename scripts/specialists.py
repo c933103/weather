@@ -66,9 +66,12 @@ def extract_temperature_ensemble(source, start, end):
     times = []
     for text in hourly.get('time', []):
         try:
-            times.append(dt.datetime.fromisoformat(str(text).replace('Z', '+00:00')))
+            parsed = dt.datetime.fromisoformat(str(text).replace('Z', '+00:00'))
         except ValueError:
             continue
+        # Open-Meteo returns naive ISO strings for a GMT request; attach UTC
+        # so they compare cleanly with the aware report window.
+        times.append(parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc))
     in_span = [t for t in times if start <= t < end]
     mean_time, mean_temp = [], []
     raw_times = hourly.get('time', [])

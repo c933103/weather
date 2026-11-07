@@ -137,6 +137,18 @@ class CascadeTests(unittest.TestCase):
         merged = combined_temperature(self.series(0, 5, 1, 10.0), self.series(5, 3, 6, 30.0))
         self.assertEqual(merged['model'], 'ecmwf_ifs_9km+ecmwf_ec46_ensemble_mean_36km')
 
+    def test_naive_time_strings_from_open_meteo(self):
+        # The real ensemble API returns naive ISO strings for a GMT request;
+        # extraction must not crash comparing them with the aware window.
+        city = synthetic_city()
+        hourly = {k: v for k, v in city['temperature_ensemble']['hourly'].items()}
+        hourly['time'] = [t.replace('+00:00', '') for t in hourly['time']]
+        source = {'ok': True, 'response': {'hourly': hourly, 'hourly_units': {}}}
+        block = extract_temperature_ensemble(source, dt.datetime(2026, 11, 7, 21, tzinfo=dt.timezone.utc),
+                                             dt.datetime(2026, 11, 23, 21, tzinfo=dt.timezone.utc))
+        self.assertGreater(block['check']['member_fields'], 0)
+        self.assertGreater(block['check']['samples_in_chart_span'], 0)
+
     def test_ensemble_mean_series(self):
         city = synthetic_city()
         source = {'ok': True, 'response': {'hourly': city['temperature_ensemble']['hourly'],
