@@ -98,6 +98,17 @@ def main():
         chart_path.write_bytes(blob)
         bundle['chart_local_path'] = str(chart_path)
         bundle['chart_url'] = base+chart['path']
+    chart_svg = bundle['products'].get('chart_svg')
+    if chart_svg:
+        if chart_svg['path'] != 'latest/chart.svg':
+            raise ValueError('UNEXPECTED_CHART_SVG_PATH')
+        blob = get_bytes(base+chart_svg['path'])
+        verify_bytes(blob, chart_svg)
+        svg_path = args.out.with_suffix('.svg')
+        svg_path.parent.mkdir(parents=True, exist_ok=True)
+        svg_path.write_bytes(blob)
+        bundle['chart_svg_local_path'] = str(svg_path)
+        bundle['chart_svg_url'] = base+chart_svg['path']
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(bundle, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     print(json.dumps({'date': args.target_date_jst, 'data_commit': commit,

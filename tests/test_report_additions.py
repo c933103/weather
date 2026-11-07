@@ -4,9 +4,10 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from collect import jtwc_system_ids
-from compute import (chart_confidence_for_city, compass16, grade_from_spread,
-                     hazard_flags, parse_jtwc_abpw)
+from collect import combined_temperature, jtwc_system_ids
+from compute import (chart_confidence_for_city, compass16, frost_agreement,
+                     grade_from_spread, hazard_flags, parse_jtwc_abpw,
+                     parse_space_weather)
 from specialists import extract_temperature_ensemble
 
 ABPW_SAMPLE = (
@@ -113,6 +114,67 @@ class ConfidenceTests(unittest.TestCase):
 
     def test_confidence_missing_ensemble(self):
         self.assertEqual(chart_confidence_for_city({'timezone': 'Asia/Tokyo'}, dt.date(2026, 11, 8)), {})
+
+
+class CascadeTests(unittest.TestCase):
+    def series(self, start, hours, step, value):
+        base = dt.datetime(2026, 11, 8, tzinfo=dt.timezone.utc) + dt.timedelta(hours=start)
+        return {'time': [(base + dt.timedelta(hours=step * i)).isoformat() for i in range(hours)],
+                'temperature_2m': [value] * hours, 'weather_code': [3] * hours}
+
+    def test_three_tier_cascade_order_and_cutoffs(self):
+        ifs = self.series(0, 10, 1, 10.0)          # hours 0..9
+        ens = self.series(5, 10, 1, 20.0)          # overlaps; only hours 10..14 may enter
+        ec46 = self.series(12, 6, 6, 30.0)         # overlaps; only after hour 14
+        merged = combined_temperature(ifs, ec46, ens)
+        models = merged['sample_model']
+        self.assertEqual(models[:10], ['ecmwf_ifs_9km'] * 10)
+        self.assertEqual(models[10:15], ['ecmwf_ifs025_ensemble_mean'] * 5)
+        self.assertTrue(all(m == 'ecmwf_ec46_ensemble_mean_36km' for m in models[15:]))
+        self.assertEqual(merged['temperature_2m'][12], 20.0)
+
+    def test_two_tier_call_still_works(self):
+        merged = combined_temperature(self.series(0, 5, 1, 10.0), self.series(5, 3, 6, 30.0))
+        self.assertEqual(merged['model'], 'ecmwf_ifs_9km+ecmwf_ec46_ensemble_mean_36km')
+
+    def test_ensemble_mean_series(self):
+        city = synthetic_city()
+        source = {'ok': True, 'response': {'hourly': city['temperature_ensemble']['hourly'],
+                                           'hourly_units': {}}}
+        block = extract_temperature_ensemble(source, dt.datetime(2026, 11, 7, 21, tzinfo=dt.timezone.utc),
+                                             dt.datetime(2026, 11, 23, 21, tzinfo=dt.timezone.utc))
+        mean = block['mean_hourly']
+        self.assertEqual(len(mean['time']), 72)
+        self.assertAlmostEqual(mean['temperature_2m'][0], 20.0 + 0.0, delta=1.0)
+
+
+class SpaceWeatherTests(unittest.TestCase):
+    def test_parse(self):
+        sources = {
+            'swpc/alerts': {'ok': True, 'response': [
+                {'product_id': 'WARK04', 'message': 'Space Weather Message'},
+                {'product_id': 'ALTTP2', 'message': 'Space Weather Message'}]},
+            'swpc/three_day': {'ok': True, 'response': 'Forecast text\nG1 (Minor) geomagnetic storm likely\nKp= 5.00'},
+            'swpc/geomag': {'ok': True, 'response': 'NOAA Geomagnetic Activity\nG2 (Moderate) watch'},
+        }
+        digest = parse_space_weather(sources)
+        self.assertEqual(digest['alerts_count'], 2)
+        self.assertIn('WARK04', digest['warning_or_alert_ids'])
+        self.assertEqual(digest['max_g_scale_in_outlook'], 2)
+        self.assertTrue(digest['extreme'])
+
+    def test_quiet(self):
+        digest = parse_space_weather({})
+        self.assertIsNone(digest['alerts_count'])
+        self.assertFalse(digest['extreme'])
+
+
+class FrostAgreementTests(unittest.TestCase):
+    def test_agreement(self):
+        self.assertEqual(frost_agreement(-1.0, 0.5), 'disagree')
+        self.assertEqual(frost_agreement(-1.0, -0.5), 'agree')
+        self.assertEqual(frost_agreement(3.0, 2.0), 'agree')
+        self.assertIsNone(frost_agreement(None, -1.0))
 
 
 if __name__ == '__main__':

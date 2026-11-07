@@ -114,6 +114,32 @@ notes, cyclone section and chart rows are fixed formats):
   `cyclone_watch` digest parsed from ABPW with the warning-source inventory
   and the ECMWF probe result, and the `chart_confidence` grades.
 
+## Model plurality, space weather, chart cascade and SVG
+
+- **NOAA GFS for every city**: a `gfs_seamless` hourly job (temperature, humidity,
+  precipitation, wind, pressure, soil temperature, weather code) is collected
+  alongside the ECMWF IFS run. `calculated.json` carries a per-city
+  `model_crosscheck` (GFS temperature/soil ranges, IFS–GFS max/min differences,
+  and whether the two models' frost limbs agree). Report values remain the IFS
+  ones unless the official local observatory forecast contradicts them.
+- **Local observatories**: HKO (Hong Kong), JMA (Tokyo/Takamatsu) and CWA
+  (Taipei) products are in the official bundle; the CWA county forecast
+  (F-C0032-001 for 臺北市) is fetched whenever the optional `CWA_API_KEY`
+  secret is configured, like the CWA tide API.
+- **Space weather**: `calculated.json` carries a `space_weather` digest parsed
+  from the SWPC products already collected (alert product ids, highest G-scale
+  and Kp in the outlooks, and an `extreme` flag at warning level or G2+), so
+  the 06:00 severe-weather message can report extreme solar activity.
+- **Chart source cascade**: the 384-hour temperature series is spliced in
+  reliability order — ECMWF IFS 9km deterministic, then the IFS ensemble mean,
+  then the EC46 ensemble mean — each tier contributing only after the previous
+  tier ends, with every sample's model retained. The chart prints the actual
+  cascade with its switch dates beneath the axes. Day highs are local calendar
+  days; night lows are the local noon-to-noon minima plotted between days.
+- **SVG chart**: the workflow renders `chart.svg` alongside `chart.png`
+  (same figure); both are checksum-published in the manifest and the 06:00
+  reader downloads and verifies both.
+
 ## Source documentation
 
 - https://open-meteo.com/en/docs/ecmwf-api

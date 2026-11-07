@@ -166,6 +166,46 @@ def wmo_emoji(c):
     return '―'
 
 
+CASCADE_LABELS={'ecmwf_ifs_9km':'ECMWF IFS 9km',
+                'ecmwf_ifs025_ensemble_mean':'IFSアンサンブル平均',
+                'ecmwf_ec46_ensemble_mean_36km':'EC46アンサンブル平均'}
+
+
+def cascade_segments(row,tz,day0=None):
+    """Contiguous source-model segments of the chart series, in local dates."""
+    hr=row.get('chart_hourly') or {}
+    ts=hr.get('time') or []; models=hr.get('sample_model') or []
+    segments=[]
+    for t,m in zip(ts,models):
+        if not m:continue
+        d=parse_utc(t).astimezone(tz).date()
+        if day0 is not None and not (day0<=d<=day0+timedelta(days=16)):
+            continue
+        if segments and segments[-1][0]==m:
+            segments[-1]=(m,segments[-1][1],d)
+        else:
+            segments.append((m,d,d))
+    return segments
+
+
+def cascade_note(raws,day0=None):
+    """The reliability cascade actually used, labelled beneath the chart."""
+    per_city={}
+    for city in ('Tokyo Minato Ward','Hong Kong'):
+        segs=cascade_segments(raws.get(city) or {},SITES[city][1],day0)
+        per_city[city]=[(CASCADE_LABELS.get(m,m),a,b) for m,a,b in segs]
+    def fmt(segs):
+        return ' → '.join(f'{a.strftime("%m/%d")}–{b.strftime("%m/%d")} {label}' for label,a,b in segs)
+    tokyo,hk=per_city['Tokyo Minato Ward'],per_city['Hong Kong']
+    if not tokyo and not hk:return ''
+    if tokyo==hk:
+        return f'気温データ源（信頼度の高い順に接続）：{fmt(tokyo)}'
+    parts=[]
+    if tokyo:parts.append(f'東京 {fmt(tokyo)}')
+    if hk:parts.append(f'香港 {fmt(hk)}')
+    return '気温データ源（信頼度の高い順に接続）：'+'｜'.join(parts)
+
+
 def daily_icon(row,day,tz):
     hr=row.get('chart_hourly') or row.get('hourly') or {}
     ts=hr.get('time') or [];wc=hr.get('weather_code') or []
@@ -238,9 +278,15 @@ def render(raw,target_day,out_path):
             grade=(grades.get(dd.isoformat()) or {}).get('grade')
             val=f'{cc}/{grade}' if grade else f'{cc}/未評価'
             fig.text(left+width*(i/16),y,val,fontsize=7.3,ha='center',va='center')
+    note=cascade_note(raws,d0)
+    if note:
+        fig.text(left,.068,note,fontsize=7.8,color='#555555')
     fig.text(left,.04,'各日の最高：その日の予報最大値　／　夜間の最低：両日正午に挟まれた24時間の予報最小値',fontsize=8,color='#666666')
     out=Path(out_path);out.parent.mkdir(parents=True,exist_ok=True)
     fig.savefig(out,bbox_inches='tight',facecolor='white')
+    # SVG twin of the same figure (vector deliverable); the PNG stays as the
+    # raster fallback and keeps its own verification below.
+    fig.savefig(out.with_suffix('.svg'),format='svg',bbox_inches='tight',facecolor='white')
     plt.close(fig)
     from PIL import Image
     with Image.open(out) as im:

@@ -47,6 +47,10 @@ AIR_FIELDS = (
     'us_aqi_sulphur_dioxide,us_aqi_carbon_monoxide,pm2_5,pm10,ozone,'
     'nitrogen_dioxide,sulphur_dioxide,carbon_monoxide,dust,uv_index'
 ).split(',')
+GFS_FIELDS = (
+    'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,'
+    'wind_direction_10m,pressure_msl,soil_temperature_0cm,weather_code'
+).split(',')
 
 
 def iso_now():
@@ -186,33 +190,48 @@ def forecast_result(source, model, lat, lon):
             'initialization_note': 'Provider response does not identify the initialization cycle; generationtime_ms is not an issue time.'}
 
 
-def combined_temperature(ifs, extended):
-    """Keep IFS where available. Add *native* six-hour EC46 values only after it.
+def combined_temperature(ifs, extended, ens_mean=None):
+    """Reliability cascade for the 384-hour chart series.
 
-    Each sample retains its model. No extrapolation, bias correction or fabricated
-    hourly tail is used. EC46 ensemble mean is identified explicitly.
+    Most reliable source first: ECMWF IFS 9km deterministic while it lasts,
+    then the ECMWF IFS ensemble mean, then the EC46 ensemble mean — each tier
+    contributes only samples after the previous tier's last timestamp. Every
+    sample retains its model marker; no extrapolation, bias correction or
+    fabricated tail. The chart labels this cascade beneath the axes from the
+    sample_model markers.
     """
+    tiers = [(ifs, 'ecmwf_ifs_9km')]
+    if ens_mean:
+        tiers.append((ens_mean, 'ecmwf_ifs025_ensemble_mean'))
+    tiers.append((extended, 'ecmwf_ec46_ensemble_mean_36km'))
     samples = {}
-    for source, marker in ((ifs, 'ecmwf_ifs_9km'), (extended, 'ecmwf_ec46_ensemble_mean_36km')):
+    used = []
+    for source, marker in tiers:
         ts = source.get('time', [])
         temp = source.get('temperature_2m', [])
         weather = source.get('weather_code', [])
         if len(ts) != len(temp):
             continue
         cutoff = max(samples) if samples else None
+        added = False
         for i, (t, value) in enumerate(zip(ts, temp)):
             stamp = parse_time(t)
-            if not numeric(value) or (source is extended and cutoff is not None and stamp <= cutoff):
+            if not numeric(value) or (cutoff is not None and stamp <= cutoff):
                 continue
             samples[stamp] = (value, weather[i] if i < len(weather) else None, marker)
+            added = True
+        if added:
+            used.append(marker)
     ordered = sorted(samples)
     return {'time': [t.isoformat() for t in ordered],
             'temperature_2m': [samples[t][0] for t in ordered],
             'weather_code': [samples[t][1] for t in ordered],
             'sample_model': [samples[t][2] for t in ordered],
-            'model': 'ecmwf_ifs_9km+ecmwf_ec46_ensemble_mean_36km',
+            'model': '+'.join(used) if used else 'ecmwf_ifs_9km',
             'units': {'temperature_2m': '°C', 'weather_code': 'wmo code'},
-            'tail_note': 'EC46 is a lower-resolution six-hour ensemble mean, not a continuation of deterministic 9km IFS.'}
+            'tail_note': 'Cascade in reliability order: IFS 9km deterministic, then IFS '
+                         'ensemble mean, then EC46 ensemble mean (36km, six-hour). Each '
+                         'sample keeps its source model; nothing is extrapolated.'}
 
 
 def audit_long(hourly, start, end):
@@ -498,6 +517,11 @@ def build_jobs(day):
             'forecast_days': 3, 'past_days': 2, 'wind_speed_unit': 'ms', 'precipitation_unit': 'mm'}, True)
         jobs[f'{key}/air'] = ('https://air-quality-api.open-meteo.com/v1/air-quality', {
             **coord, 'domains': 'cams_global', 'hourly': ','.join(AIR_FIELDS), 'forecast_days': 3}, True)
+        # NOAA GFS as the independent second model for every city: cross-check
+        # for the ECMWF IFS values and the frost limb (soil temperature).
+        jobs[f'{key}/gfs'] = ('https://api.open-meteo.com/v1/forecast', {
+            **coord, 'models': 'gfs_seamless', 'hourly': ','.join(GFS_FIELDS),
+            'forecast_days': 3, 'past_days': 2, 'wind_speed_unit': 'ms', 'precipitation_unit': 'mm'}, True)
         if key in ('hong_kong', 'tokyo_minato'):
             jobs[f'{key}/ifs_long'] = ('https://api.open-meteo.com/v1/forecast', {
                 **coord, 'models': 'ecmwf_ifs', 'hourly': 'temperature_2m,weather_code',
@@ -572,6 +596,9 @@ def build_jobs(day):
         # This URL is redacted before serialization, including failed attempts.
         jobs['cwa/tide_api'] = ('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-A0021-001',
                                 {'Authorization': token, 'format': 'JSON', 'LocationName': '新北市淡水區'}, False)
+        # Taipei's local-observatory forecast (CWA county forecast, one week).
+        jobs['cwa/forecast'] = ('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001',
+                                {'Authorization': token, 'format': 'JSON', 'locationName': '臺北市'}, False)
     jobs.update(build_specialist_jobs(CITIES))
     return jobs
 
@@ -661,17 +688,20 @@ def collect(day, out):
             'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
     core_checks = []
     air_checks = []
+    gfs_checks = []
     chart_checks = []
     for key, (name, lat, lon, zone) in CITIES.items():
         hr = forecast_result(root['sources'][f'{key}/ifs'], 'ecmwf_ifs_9km', lat, lon)
         air = forecast_result(root['sources'][f'{key}/air'], 'cams_global', lat, lon)
+        gfs = forecast_result(root['sources'][f'{key}/gfs'], 'noaa_gfs_seamless', lat, lon)
         check = audit_hourly(hr, CORE_FIELDS, start)
         air_check = audit_hourly(air, AIR_FIELDS, start)
+        gfs_check = audit_hourly(gfs, GFS_FIELDS, start)
         previous_pressure = audit_hourly(hr, ['pressure_msl'], start-dt.timedelta(hours=24))
         interval_check = audit_hourly(hr, ['precipitation', 'rain', 'snowfall', 'wind_gusts_10m', 'precipitation_probability'], start+dt.timedelta(hours=1))
         city = {'key': key, 'latitude': lat, 'longitude': lon, 'timezone': zone,
-                'hourly': hr, 'raw_air_quality': air,
-                'checks': {'core_24h': check, 'air_24h': air_check, 'previous_day_pressure': previous_pressure, 'preceding_hour_intervals': interval_check}}
+                'hourly': hr, 'raw_air_quality': air, 'gfs': gfs,
+                'checks': {'core_24h': check, 'air_24h': air_check, 'gfs_24h': gfs_check, 'previous_day_pressure': previous_pressure, 'preceding_hour_intervals': interval_check}}
         city['coastal_forecast'] = {**{k: v for k, v in coastal.items() if k not in ('cities', 'downloads')}, **coastal.get('cities', {}).get(key, {'ready': False})}
         city['snow_probability_inputs'] = extract_snow(root['sources'][f'{key}/snow_ensemble'], start, audit_hourly)
         if key in ('hong_kong', 'tokyo_minato'):
@@ -681,6 +711,7 @@ def collect(day, out):
             city['pollen'] = extract_pollen(root['sources'][f'{key}/pollen'], start, audit_hourly, root['sources']['pollen/publication_config'])
         core_checks.append(check['ready'] and previous_pressure['ready'] and interval_check['ready'])
         air_checks.append(air_check['ready'])
+        gfs_checks.append(gfs_check['ready'])
         for field, status in check.get('variables', {}).items():
             if not status['ready']:
                 root['quality']['reasons'].append(f'{name}: {field} has {status["valid_slots"]}/24 values')
@@ -688,7 +719,8 @@ def collect(day, out):
             extended = forecast_result(root['sources'][f'{key}/ec46'], 'ecmwf_ec46_ensemble_mean_36km', lat, lon)
             city['extended_hourly'] = extended
             long_ifs = forecast_result(root['sources'][f'{key}/ifs_long'], 'ecmwf_ifs_9km', lat, lon)
-            city['chart_hourly'] = combined_temperature(long_ifs, extended)
+            ens_mean = city.get('temperature_ensemble', {}).get('mean_hourly')
+            city['chart_hourly'] = combined_temperature(long_ifs, extended, ens_mean)
             city['checks']['chart_384h'] = audit_long(city['chart_hourly'], start, long_end)
             chart_checks.append(city['checks']['chart_384h']['ready'])
         if key in ('tokyo_minato', 'takamatsu'):
@@ -727,6 +759,7 @@ def collect(day, out):
     q = root['quality']
     q['core_24h_ready'] = all(core_checks)
     q['air_24h_ready'] = all(air_checks)
+    q['gfs_24h_ready'] = all(gfs_checks)
     q['chart_384h_ready'] = len(chart_checks) == 2 and all(chart_checks)
     q['official_tides_ready'] = all(c['astronomical_tide']['ready'] for c in root['cities'].values())
     q['all_city_hourly_tides_ready'] = all(len(c['astronomical_tide'].get('time', [])) == 24 or c['astronomical_tide'].get('hourly_reference', {}).get('ready') is True for c in root['cities'].values())

@@ -37,6 +37,43 @@ def hazard_flags(pm2_5_max, pm10_max, surface_temperature_min):
     }
 
 
+def frost_agreement(ifs_surface_min, gfs_soil_min):
+    """Whether the ECMWF IFS and NOAA GFS frost limbs agree for the day."""
+    if ifs_surface_min is None or gfs_soil_min is None:
+        return None
+    return 'agree' if (ifs_surface_min <= 0) == (gfs_soil_min <= 0) else 'disagree'
+
+
+def parse_space_weather(sources):
+    """Digest of the NOAA SWPC space-weather products in the official bundle.
+
+    Factual extraction only: alert product ids issued, the highest G-scale
+    mentioned in the 3-day/geomagnetic outlook text, and whether anything
+    warning-level or G2-or-stronger is present (the report's 'extreme' bar).
+    """
+    alerts = sources.get('swpc/alerts', {}).get('response')
+    product_ids = []
+    if isinstance(alerts, list):
+        product_ids = [a.get('product_id') for a in alerts if isinstance(a, dict)]
+    text = ''
+    for key in ('swpc/three_day', 'swpc/geomag'):
+        value = sources.get(key, {}).get('response')
+        if isinstance(value, str):
+            text += value + '\n'
+    g_scales = [int(m) for m in re.findall(r'\bG([0-5])\b', text)]
+    kp_values = [float(m) for m in re.findall(r'Kp[= ]+([0-9]+(?:\.[0-9]+)?)', text)]
+    warning_ids = [p for p in product_ids if p and (p.startswith('WAR') or p.startswith('ALT'))]
+    max_g = max(g_scales) if g_scales else None
+    return {'alerts_count': len(product_ids) if isinstance(alerts, list) else None,
+            'alert_product_ids': product_ids,
+            'warning_or_alert_ids': warning_ids,
+            'max_g_scale_in_outlook': max_g,
+            'max_kp_in_outlook': max(kp_values) if kp_values else None,
+            'extreme': bool(warning_ids) or (max_g is not None and max_g >= 2),
+            'sources_ok': {k: sources.get(k, {}).get('ok') for k in
+                           ('swpc/alerts', 'swpc/three_day', 'swpc/geomag', 'nict/space_weather')}}
+
+
 def grade_from_spread(spread):
     """Chart confidence from the ensemble spread of daily maximum temperature."""
     if spread is None:
@@ -258,6 +295,22 @@ def compute_city(city, start, end):
         wbgt_band = next((label for limit, label in
                           ((21, 'ほぼ安全'), (25, '注意'), (28, '警戒'), (31, '厳重警戒'))
                           if wbgt_max < limit), '危険')
+    gfs = city.get('gfs') or {}
+    gfs_temp = value_range(select(gfs, 'temperature_2m', start, end))
+    gfs_soil = value_range(select(gfs, 'soil_temperature_0cm', start, end))
+    ifs_surface_min = result['surface_temperature'].get('minimum') if result['surface_temperature'].get('ready') else None
+    gfs_soil_min = gfs_soil.get('minimum') if gfs_soil.get('ready') else None
+    result['model_crosscheck'] = {
+        'gfs_temperature_2m': gfs_temp,
+        'gfs_soil_temperature_0cm': gfs_soil,
+        'temperature_max_difference_c': round(abs(result['temperature_2m']['maximum'] - gfs_temp['maximum']), 2)
+            if result['temperature_2m'].get('ready') and gfs_temp.get('ready') else None,
+        'temperature_min_difference_c': round(abs(result['temperature_2m']['minimum'] - gfs_temp['minimum']), 2)
+            if result['temperature_2m'].get('ready') and gfs_temp.get('ready') else None,
+        'frost_agreement': frost_agreement(ifs_surface_min, gfs_soil_min),
+        'note': 'NOAA GFS (gfs_seamless via Open-Meteo) as the independent second model; '
+                'the report values remain the ECMWF IFS ones unless the official local '
+                'observatory forecast contradicts them.'}
     result['report_digest'] = {
         'dominant_weather_code': Counter(codes).most_common(1)[0][0] if codes else None,
         'humidity_mean': round(sum(humidity) / len(humidity), 1) if len(humidity) == 24 else None,
@@ -286,8 +339,8 @@ def compute_bundle(raw):
     checks = {}
     for name, city in cities.items():
         checks[name] = not city.get('error') and all(
-            v.get('ready') is True for k, v in city.items()
-            if 'status' not in v and k != 'report_digest')
+            v.get('ready') is True for v in city.values()
+            if isinstance(v, dict) and 'ready' in v)
     sources = raw.get('sources', {})
     ecmwf_probe = sources.get('ecmwf/cyclone_product', {})
     ecmwf_response = ecmwf_probe.get('response')
@@ -322,6 +375,7 @@ def compute_bundle(raw):
             'calculation_quality': {'ready': all(checks.values()), 'cities': checks,
                                     'note': 'Calculation success does not resolve missing original report requirements.'},
             'cities': cities, 'cyclone_watch': cyclone_watch,
+            'space_weather': parse_space_weather(sources),
             'chart_confidence': chart_confidence}
 
 

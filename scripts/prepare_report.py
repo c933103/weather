@@ -40,14 +40,19 @@ def prepare(output):
     # Remove a prior product before rendering so a failed retry cannot publish it.
     chart_path = latest / 'chart.png'
     chart_path.unlink(missing_ok=True)
+    chart_path.with_suffix('.svg').unlink(missing_ok=True)
     try:
         from render_chart import render
         products['chart_coverage'] = render(raw, raw['target_date_jst'], chart_path)
         products['chart'] = file_entry(chart_path)
+        svg_path = chart_path.with_suffix('.svg')
+        if svg_path.exists():
+            products['chart_svg'] = file_entry(svg_path)
         products['chart_ready'] = True
     except Exception as exc:
         products['chart_error'] = f'{type(exc).__name__}: {exc}'
         chart_path.unlink(missing_ok=True)
+        chart_path.with_suffix('.svg').unlink(missing_ok=True)
     manifest['products'] = products
     # Never replace the original collection quality with calculation/chart success.
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')

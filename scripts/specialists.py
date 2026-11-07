@@ -70,7 +70,16 @@ def extract_temperature_ensemble(source, start, end):
         except ValueError:
             continue
     in_span = [t for t in times if start <= t < end]
+    mean_time, mean_temp = [], []
+    raw_times = hourly.get('time', [])
+    for i, text in enumerate(raw_times):
+        values = [hourly[f][i] for f in fields
+                  if i < len(hourly[f]) and isinstance(hourly[f][i], (int, float))]
+        if values:
+            mean_time.append(text)
+            mean_temp.append(round(sum(values) / len(values), 3))
     return {'model': 'ecmwf_ifs025_ensemble', 'hourly': hourly,
+            'mean_hourly': {'time': mean_time, 'temperature_2m': mean_temp},
             'units': raw.get('hourly_units', {}) if isinstance(raw, dict) else {},
             'check': {'member_fields': len(fields), 'members_ready': len(fields) >= 40,
                       'first_utc': times[0].isoformat() if times else None,
