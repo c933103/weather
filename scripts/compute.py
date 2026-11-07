@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""06:00 numerical calculation pass; never run by the 05:00 collector."""
+"""Deterministic numerical calculations, run by GitHub after collection."""
 import argparse
 import datetime as dt
 import json
 import math
+import os
 from pathlib import Path
 
-from collect import parse_time, numeric
+from collect import CITIES, iso_now, parse_time, numeric
 
 
 def select(hourly, field, start, end, accumulated=False):
@@ -136,20 +137,40 @@ def compute_city(city, start, end):
     return result
 
 
+def compute_bundle(raw):
+    start, end = parse_time(raw['window_start_utc']), parse_time(raw['window_end_utc'])
+    cities = {}
+    for name in (v[0] for v in CITIES.values()):
+        try:
+            cities[name] = compute_city(raw['cities'][name], start, end)
+        except Exception as exc:
+            cities[name] = {'error': f'{type(exc).__name__}: {exc}'}
+    checks = {}
+    for name, city in cities.items():
+        checks[name] = not city.get('error') and all(
+            v.get('ready') is True for v in city.values() if 'status' not in v)
+    return {'schema': 'east_asia_weather_calculated_v1',
+            'target_date_jst': raw['target_date_jst'], 'window_start_utc': start.isoformat(),
+            'window_end_utc': end.isoformat(), 'collection_utc': raw['collection_utc'],
+            'collector_commit': raw.get('collector_commit'),
+            'workflow_run_id': raw.get('workflow_run_id'),
+            'calculation_commit': os.getenv('GITHUB_SHA', raw.get('collector_commit')),
+            'calculated_at_utc': iso_now(), 'raw_quality': raw['quality'],
+            'calculation_quality': {'ready': all(checks.values()), 'cities': checks,
+                                    'note': 'Calculation success does not resolve missing original report requirements.'},
+            'cities': cities}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     raw = json.loads(args.input.read_text())
-    start, end = parse_time(raw['window_start_utc']), parse_time(raw['window_end_utc'])
-    result = {'target_date_jst': raw['target_date_jst'], 'window_start_utc': start.isoformat(),
-              'window_end_utc': end.isoformat(), 'raw_quality': raw['quality'],
-              'cities': {name: compute_city(city, start, end) for name, city in raw['cities'].items()}}
+    result = compute_bundle(raw)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False))
-    print(json.dumps({name: {'wbgt': value['wbgt'], 'snow_probability': value['snow_probability']}
-                       for name, value in result['cities'].items()}, ensure_ascii=False))
+    print(json.dumps(result['calculation_quality'], ensure_ascii=False))
 
 
 if __name__ == '__main__':

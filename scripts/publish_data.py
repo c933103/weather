@@ -31,6 +31,8 @@ def main():
             git('worktree', 'add', '--detach', str(target), 'HEAD', cwd=repository)
             git('switch', '--orphan', 'weather-data-publish', cwd=target)
         try:
+            # Replace the snapshot so failed products cannot leave an old chart.
+            shutil.rmtree(target / 'latest', ignore_errors=True)
             shutil.copytree(source, target / 'latest', dirs_exist_ok=True)
             git('config', 'user.name', 'github-actions[bot]', cwd=target)
             git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com', cwd=target)

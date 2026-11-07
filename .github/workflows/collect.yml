@@ -1,4 +1,4 @@
-name: Collect East Asia forecast data
+name: Collect and compute East Asia forecast
 
 on:
   schedule:
@@ -27,8 +27,12 @@ jobs:
     steps:
       - name: Check out collector
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install forecast file decoders
-        run: python3 -m pip install -r requirements-collection.txt
+      - name: Install forecast decoders and calculation/chart dependencies
+        run: python3 -m pip install -r requirements-collection.txt -r requirements-compute.txt -r requirements-chart.txt
+      - name: Install Japanese and weather-symbol fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk fonts-noto-core
       - name: Test coverage and failure handling
         run: python3 -m unittest discover -s tests -v
       - name: Collect live numerical data
@@ -43,6 +47,11 @@ jobs:
             args+=(--target-date-jst "$TARGET_DATE_JST")
           fi
           python3 -u scripts/collect.py "${args[@]}" --out-dir output
+      - name: Calculate weather values and render the chart
+        id: prepare
+        if: always() && steps.collect.outcome != 'skipped'
+        continue-on-error: true
+        run: python3 scripts/prepare_report.py --output output
       - name: Retain full raw responses and diagnostics
         if: always() && steps.collect.outcome != 'skipped'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -64,10 +73,10 @@ jobs:
           text = 'Collection failed before a manifest was written.'
           if file.exists():
               m = json.loads(file.read_text())
-              text = f'Report date: {m["target_date_jst"]}\n\n```json\n{json.dumps(m["quality"], indent=2)}\n```'
+              text = f'Report date: {m["target_date_jst"]}\n\n```json\n{json.dumps({"data_quality": m["quality"], "products": m.get("products", {})}, indent=2)}\n```'
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
               out.write(text + '\n')
           PY
-      - name: Fail if required numerical input coverage is missing
-        if: steps.collect.outcome == 'failure'
+      - name: Fail if required inputs or computed products are missing
+        if: steps.collect.outcome == 'failure' || steps.prepare.outcome == 'failure'
         run: exit 1

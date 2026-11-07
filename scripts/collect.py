@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Network-only 05:00 JST pass. No meteorological calculations or charts.
+"""Collection phase of the GitHub 05:00 JST collection/compute workflow.
 
 Forecast file decoders are specified in requirements-collection.txt. Numerical
 coverage, transport success and full report completeness are different states.
@@ -579,7 +579,7 @@ def collect(day, out):
     start = dt.datetime.combine(day, dt.time(6), JST).astimezone(UTC)
     end = start+dt.timedelta(hours=24)
     long_end = start+dt.timedelta(hours=384)
-    root = {'schema': 'east_asia_weather_raw_v3', 'phase': '05:00_collect_only',
+    root = {'schema': 'east_asia_weather_raw_v3', 'phase': 'collection',
             'target_date_jst': day.isoformat(), 'collection_utc': now.isoformat(),
             'window_start_utc': start.isoformat(), 'window_end_utc': end.isoformat(),
             'long_end_utc': long_end.isoformat(), 'cities': {}, 'sources': {},

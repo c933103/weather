@@ -1,15 +1,15 @@
 # East Asia Weather Daily
 
-The 05:00 JST data-collection pass for Hong Kong, Taipei, Tokyo Minato Ward and Takamatsu. One existing ChatGPT automation performs calculation, charting and Japanese reporting at 06:00 JST.
+The 05:00 JST GitHub workflow collects data, calculates weather values and renders the chart for Hong Kong, Taipei, Tokyo Minato Ward and Takamatsu. One existing ChatGPT automation reads the finished products, verifies coverage and prepares the Japanese report at 06:00 JST.
 
 ## Run and handoff
 
 - One GitHub Actions workflow: `.github/workflows/collect.yml`.
 - Daily cron: `0 20 * * *` UTC, corresponding to 05:00 JST the following day. GitHub can delay scheduled jobs; this is not a guaranteed start time.
 - Manual runs and collector-code pushes also run a live collection test.
-- Collection uses bounded HTTPS retries and independent requests per city/provider. NOAA binary files use the pinned ecCodes/netCDF4 decoders in `requirements-collection.txt`; temporary full files are deleted after point extraction.
+- Collection uses bounded HTTPS retries and independent requests per city/provider. NOAA binary files use the pinned ecCodes/netCDF4 decoders in `requirements-collection.txt`; temporary full files are deleted after point extraction. The same job then runs `prepare_report.py` with the calculation/chart dependencies and Japanese fonts installed.
 - Full raw responses are retained as Actions artifacts for 14 days.
-- A separate `data` branch contains `latest/manifest.json`, four city JSON files, a regional forecast bundle and an official-source bundle. Data updates do not trigger another collection run.
+- A separate `data` branch contains `latest/manifest.json`, four city JSON files, a regional forecast bundle, an official-source bundle, `latest/calculated.json` and `latest/chart.png`. All are published together from one run. Data updates do not trigger another run.
 - The manifest records the report date, exact 24-hour window, source status, per-field completeness, checksums and the workflow run. A successful workflow does **not** mean every requested forecast is available.
 
 The report window is 06:00 JST to the next 06:00 JST (05:00 local time in Hong Kong and Taipei). The long-range window ends exactly 384 hours after report start.
@@ -19,7 +19,7 @@ python3 scripts/collect.py --target-date-jst 2026-11-08 --out-dir output
 python3 -m unittest discover -s tests -v
 ```
 
-Install `requirements-collection.txt` before collection. The collector exits unsuccessfully if required weather, air-quality, snowfall ensemble, hourly tide, surge or regional long-range input checks fail. It still writes diagnostics. The original requirements remain the acceptance scope; a successful migration or workflow does not make unfinished requirements optional.
+Install `requirements-collection.txt` before collection and `requirements-compute.txt` / `requirements-chart.txt` before preparation. The workflow fails if required inputs, calculations or chart generation fail. It still publishes diagnostics and available products. The original requirements remain the acceptance scope; a successful workflow does not make unfinished requirements optional.
 
 ## Numerical sources
 
@@ -46,22 +46,22 @@ Open-Meteo responses do not identify the initialization cycle. It remains null, 
 python3 scripts/read_bundle.py --target-date-jst 2026-11-08 --out output/report_raw.json
 ```
 
-This pins reads to one `data` commit, rejects another report date or a collection older than three hours, checks every file's byte length and SHA-256, and reconstructs the report's raw input. Its success does not override `quality.ready`.
+This pins reads to one `data` commit, rejects another report date or a collection older than three hours, checks every file's byte length and SHA-256, and reconstructs the report input including `calculated`. It checks that calculations belong to the same raw input, report window and workflow run, then downloads and verifies the chart alongside the JSON. Its success does not override `quality.ready`.
 
 When direct GitHub HTTPS access is unavailable, the connected GitHub reader can retrieve the same manifest and files at a single pinned commit. The raw Actions artifact is available for detailed source investigation.
 
-## 06:00 calculation
+## GitHub calculation and chart preparation
 
 ```bash
-python3 -m pip install -r requirements-compute.txt
-python3 scripts/compute.py --input output/report_raw.json --output output/calculated.json
+python3 -m pip install -r requirements-compute.txt -r requirements-chart.txt
+python3 scripts/prepare_report.py --output output
 ```
 
 This implements physically based Liljegren WBGT using ECMWF thermofeel 2.2.0, instantaneous forecast radiation and solar position; conditional wind chill; same-hour 24-hour pressure changes; AQI components; and independent ensemble snowfall probability. Accumulations use `(start,end]` because each source timestamp represents the preceding hour. Instantaneous variables use `[start,end)`.
 
 For a reporting runtime without outbound package access, `scripts/vendor/` contains the unmodified thermofeel 2.2.0 Liljegren solver and helpers with their original license. `compute.py` automatically uses that offline fallback if thermofeel is absent; NumPy is still required.
 
-The 05:00 collector does not run these report calculations.
+`prepare_report.py` reads the exact raw file produced by collection and verifies its checksum. It writes the calculated results and chart into the manifest with checksums and separate `calculation_ready` / `chart_ready` flags. Those flags never replace the original report-completeness status. The 06:00 report consumes these products rather than repeating the numerical calculations.
 
 ## Chart
 
@@ -73,7 +73,7 @@ python3 -m pip install -r requirements-chart.txt
 python3 scripts/render_chart.py --input output/report_raw.json --target-date-jst 2026-11-08 --output output/chart.png
 ```
 
-The collector does not compute WBGT, assess weather risk or draw charts at 05:00. Those remain 06:00 tasks.
+The same 05:00 GitHub workflow computes WBGT and the other implemented numerical fields and draws this chart. The 06:00 task evaluates the evidence, official hazards and coverage, then writes the report and presents the verified chart.
 
 ## Original requirements still requiring resolution
 

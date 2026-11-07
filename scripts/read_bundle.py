@@ -35,6 +35,17 @@ def verify_bytes(blob, entry):
         raise ValueError('DATASET_CHECKSUM_MISMATCH')
 
 
+def validate_calculated(record, manifest):
+    if record.get('schema') != 'east_asia_weather_calculated_v1':
+        raise ValueError('UNSUPPORTED_CALCULATION_SCHEMA')
+    for key in ('target_date_jst', 'collection_utc', 'window_start_utc', 'window_end_utc',
+                'collector_commit', 'workflow_run_id'):
+        if record.get(key) != manifest.get(key):
+            raise ValueError(f'CALCULATION_IDENTITY_MISMATCH: {key}')
+    if record.get('source_raw_sha256') != manifest['raw_artifact']['sha256']:
+        raise ValueError('CALCULATION_INPUT_MISMATCH')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', default='c933103/weather')
@@ -68,10 +79,25 @@ def main():
             bundle['sources'] = record
         elif key == 'regional':
             bundle['regional_forecasts'] = record
+        elif key == 'calculated':
+            validate_calculated(record, manifest)
+            bundle['calculated'] = record
         else:
             if record.get('key') != key:
                 raise ValueError('CITY_IDENTITY_MISMATCH')
             bundle['cities'][CITIES[key][0]] = record
+    bundle['products'] = manifest.get('products', {})
+    chart = bundle['products'].get('chart')
+    if chart:
+        if chart['path'] != 'latest/chart.png':
+            raise ValueError('UNEXPECTED_CHART_PATH')
+        blob = get_bytes(base+chart['path'])
+        verify_bytes(blob, chart)
+        chart_path = args.out.with_suffix('.png')
+        chart_path.parent.mkdir(parents=True, exist_ok=True)
+        chart_path.write_bytes(blob)
+        bundle['chart_local_path'] = str(chart_path)
+        bundle['chart_url'] = base+chart['path']
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(bundle, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     print(json.dumps({'date': args.target_date_jst, 'data_commit': commit,
