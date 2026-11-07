@@ -227,6 +227,21 @@ class SpaceWeatherTests(unittest.TestCase):
         self.assertEqual(digest['max_g_scale_in_outlook'], 2)
         self.assertTrue(digest['extreme'])
 
+    def test_kp_from_current_product_phrasing(self):
+        # The live 2026-11-07 products: the maximum is stated in a sentence
+        # and tabulated in UT-anchored rows; neither matches a 'Kp= N' form.
+        sources = {
+            'swpc/three_day': {'ok': True, 'response':
+                'The greatest expected 3 hr Kp for Nov 07-Nov 09 2026 is 5.00 (NOAA Scale\n'
+                'NOAA Kp index breakdown Nov 07-Nov 09 2026\n'
+                '             Nov 07   Nov 08   Nov 09\n'
+                '00-03UT        4.67     5.00     3.67\n'
+                '03-06UT        3.67     4.33     2.67\n'},
+            'swpc/geomag': {'ok': True, 'response': 'NOAA Kp index forecast 07 Nov - 09 Nov\n'},
+        }
+        digest = parse_space_weather(sources)
+        self.assertEqual(digest['max_kp_in_outlook'], 5.0)
+
     def test_quiet(self):
         digest = parse_space_weather({})
         self.assertIsNone(digest['alerts_count'])

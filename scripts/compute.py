@@ -44,6 +44,28 @@ def frost_agreement(ifs_surface_min, gfs_soil_min):
     return 'agree' if (ifs_surface_min <= 0) == (gfs_soil_min <= 0) else 'disagree'
 
 
+def _kp_values(text):
+    """Kp values from the SWPC outlook texts, in their actual formats.
+
+    The digest's original 'Kp= N' pattern matched none of the current
+    products, so max_kp_in_outlook silently stayed null (found 2026-11-07).
+    The 3-day forecast states the maximum directly ('The greatest expected
+    3 hr Kp for <dates> is 5.00') and both outlooks tabulate 3-hourly Kp in
+    rows anchored by their UT range label — every other number on such a
+    row is a Kp value.
+    """
+    values = []
+    m = re.search(r'greatest expected 3 hr Kp.*?is\s+([0-9]+(?:\.[0-9]+)?)', text, re.I)
+    if m:
+        values.append(float(m.group(1)))
+    for line in text.splitlines():
+        row = re.match(r'\s*\d{2}-\d{2}UT\s+(.*)$', line)
+        if row:
+            values += [float(x) for x in re.findall(r'[0-9]+(?:\.[0-9]+)?', row.group(1))]
+    values += [float(m) for m in re.findall(r'Kp[= ]+([0-9]+(?:\.[0-9]+)?)', text)]
+    return [v for v in values if 0 <= v <= 9]
+
+
 def parse_space_weather(sources):
     """Digest of the NOAA SWPC space-weather products in the official bundle.
 
@@ -61,7 +83,7 @@ def parse_space_weather(sources):
         if isinstance(value, str):
             text += value + '\n'
     g_scales = [int(m) for m in re.findall(r'\bG([0-5])\b', text)]
-    kp_values = [float(m) for m in re.findall(r'Kp[= ]+([0-9]+(?:\.[0-9]+)?)', text)]
+    kp_values = _kp_values(text)
     warning_ids = [p for p in product_ids if p and (p.startswith('WAR') or p.startswith('ALT'))]
     max_g = max(g_scales) if g_scales else None
     return {'alerts_count': len(product_ids) if isinstance(alerts, list) else None,
@@ -379,7 +401,7 @@ def compute_bundle(raw):
     for key in ('hong_kong', 'tokyo_minato'):
         name = CITIES[key][0]
         if name in raw.get('cities', {}):
-            chart_confidence[name] = chart_confidence_for_city(raw['cities'][name], day0)
+            chart_confidence[name] = chart_confidence_for_city(raw['cities'][name], day0, days=28)
     return {'schema': 'east_asia_weather_calculated_v1',
             'target_date_jst': raw['target_date_jst'], 'window_start_utc': start.isoformat(),
             'window_end_utc': end.isoformat(), 'collection_utc': raw['collection_utc'],
