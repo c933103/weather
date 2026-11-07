@@ -140,7 +140,7 @@ def draw_city(ax,highs,lows,color,name):
     # across the half-slot beyond its own end extrema, so the shading covers
     # the first slot (from t+0) and the last night (to t+384) as well.
     drawn=0
-    labelled=False
+    labelled={'high':False,'low':False}
     for run in extrema_runs(highs,lows):
         hpts=[(x,y) for x,y,k in run if k=='high']
         lpts=[(x,y) for x,y,k in run if k=='low']
@@ -155,18 +155,18 @@ def draw_city(ax,highs,lows,color,name):
             upper,lower=curve(hpts),curve(lpts)
             allowed=np.isfinite(upper)&np.isfinite(lower)&(upper>=lower)
             ax.fill_between(grid,lower,upper,where=allowed,alpha=.13,color=color,zorder=1,linewidth=0)
-        def line(pts,ms,**kw):
-            nonlocal labelled
+        def line(pts,ms,kind,**kw):
             if len(pts)>=2:
                 px=np.array([p[0] for p in pts]);py=np.array([p[1] for p in pts])
                 sample=np.linspace(px[0],px[-1],max(60,int((px[-1]-px[0])*60)))
+                suffix=' 最高' if kind=='high' else ' 最低'
                 ax.plot(sample,PchipInterpolator(px,py,extrapolate=False)(sample),
-                        label=name if not labelled else '_nolegend_',**kw)
-                labelled=True
+                        label=f'{name}{suffix}' if not labelled[kind] else '_nolegend_',**kw)
+                labelled[kind]=True
             if pts:
                 ax.plot([p[0] for p in pts],[p[1] for p in pts],'o',ms=ms,color=color,zorder=5,alpha=.95)
-        line(hpts,3.4,lw=2.4,color=color,solid_capstyle='round',zorder=4)
-        line(lpts,2.8,lw=1.9,color=color,ls=(0,(4,2)),dash_capstyle='round',zorder=4)
+        line(hpts,3.8,'high',lw=2.6,color=color,solid_capstyle='round',zorder=4)
+        line(lpts,3.2,'low',lw=2.1,color=color,ls=(0,(4,2)),dash_capstyle='round',zorder=4)
         drawn+=1
     return drawn
 
@@ -267,9 +267,9 @@ def paste_emojis(png_path, slots, font_path):
         if not bbox:
             continue
         glyph = tile.crop(bbox)
-        scale = 40 / glyph.height
-        glyph = glyph.resize((max(1, round(glyph.width * scale)), 40), Image.LANCZOS)
-        cx = fx * img.width - 16
+        scale = 54 / glyph.height
+        glyph = glyph.resize((max(1, round(glyph.width * scale)), 54), Image.LANCZOS)
+        cx = fx * img.width - 26
         cy = (1 - fy) * img.height
         img.alpha_composite(glyph, (int(cx - glyph.width / 2), int(cy - glyph.height / 2)))
         pasted += 1
@@ -280,8 +280,8 @@ def paste_emojis(png_path, slots, font_path):
 def render(raw,target_day,out_path):
     d0=date.fromisoformat(target_day)
     plt.rcParams.update({'font.family':['Noto Sans CJK JP','Noto Sans Symbols2','DejaVu Sans'],'axes.unicode_minus':False})
-    fig=plt.figure(figsize=(15.7,6.6),dpi=170)
-    left=.105; width=.865
+    fig=plt.figure(figsize=(14.2,7.2),dpi=170)
+    left=.125; width=.845
     ax=fig.add_axes([left,.27,width,.60])
     colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
     reports={};raws={};bounds=[];total=0
@@ -300,9 +300,9 @@ def render(raw,target_day,out_path):
     if not total:raise RuntimeError('No verified consecutive day-high / noon-to-noon night-low windows to plot.')
     bmin=math.floor(min(bounds)-2);bmax=math.ceil(max(bounds)+2)
     ax.set_xlim(-.08,16.0);ax.set_ylim(bmin,bmax)
-    ax.set_ylabel('気温（℃）',fontsize=9)
+    ax.set_ylabel('気温（℃）',fontsize=11.5)
     ax.set_xticks(range(17))
-    ax.set_xticklabels([(d0+timedelta(days=i)).strftime('%m/%d') for i in range(17)],fontsize=8.5)
+    ax.set_xticklabels([(d0+timedelta(days=i)).strftime('%m/%d') for i in range(17)],fontsize=11)
     ax.set_yticks(np.arange(math.ceil(bmin/5)*5,bmax+1,5))
     ax.set_yticks(np.arange(bmin,bmax+1,1),minor=True)
     ax.grid(axis='y',which='minor',alpha=.11,lw=.5)
@@ -310,16 +310,16 @@ def render(raw,target_day,out_path):
     ax.set_axisbelow(True)
     ax.spines[['top','right']].set_visible(False)
     ax.tick_params(length=0,axis='x',pad=8)
-    ax.tick_params(axis='y',labelsize=8)
-    ax.legend(loc='upper right',frameon=False,ncol=2,fontsize=9)
-    fig.text(left,.94,'香港・東京都港区｜384時間気温予報',fontsize=16,weight='bold')
-    fig.text(left,.905,'実線：日中最高（当日）／破線：夜間最低（日付間・当日正午～翌日正午の最低）｜淡色＝高低の連続帯',fontsize=8.7)
-    fig.text(left,.885,'日付位置は時刻を示さない。下段の自信度はIFSアンサンブルの日最高気温の拡散より。気温の接続順は下部のデータ源注記参照。',fontsize=7.8,color='#666666')
+    ax.tick_params(axis='y',labelsize=10.5)
+    ax.legend(loc='upper right',frameon=False,ncol=2,fontsize=11)
+    fig.text(left,.947,'香港・東京都港区｜384時間気温予報',fontsize=20,weight='bold')
+    fig.text(left,.908,'実線：日中最高（当日）／破線：夜間最低（日付間・当日正午～翌日正午の最低）｜淡色＝高低の連続帯',fontsize=10.8)
+    fig.text(left,.882,'日付位置は時刻を示さない。下段の自信度はIFSアンサンブルの日最高気温の拡散より。気温の接続順は下部のデータ源注記参照。',fontsize=9.6,color='#595959')
     emoji_font=find_emoji_font()
     icon_slots=[]
     for row,city in enumerate(('Tokyo Minato Ward','Hong Kong')):
         y=.16-row*.055
-        fig.text(.024,y,SITES[city][0],fontsize=9.5,weight='bold',va='center')
+        fig.text(.024,y,SITES[city][0],fontsize=13,weight='bold',va='center',color=colors[row])
         src=raws[city]
         # Confidence grades come from the IFS ensemble spread of daily maximum
         # temperature (compute.chart_confidence_for_city). When the bundle
@@ -339,14 +339,14 @@ def render(raw,target_day,out_path):
                 # Colour emoji are composited onto the PNG afterwards; here
                 # only the grade text is drawn, right of the emoji slot.
                 icon_slots.append((cx,y,cc))
-                fig.text(cx+.006,y,f'/{grade}' if grade else '/未評価',fontsize=8.8,ha='left',va='center')
+                fig.text(cx+.005,y,f'/{grade}' if grade else '/未評価',fontsize=11.5,ha='left',va='center')
             else:
                 val=f'{cc}/{grade}' if grade else f'{cc}/未評価'
-                fig.text(cx,y,val,fontsize=7.8,ha='center',va='center')
+                fig.text(cx,y,val,fontsize=10,ha='center',va='center')
     note=cascade_note(raws,d0)
     if note:
-        fig.text(left,.068,note,fontsize=7.8,color='#555555')
-    fig.text(left,.04,'各日の最高：その日の予報最大値　／　夜間の最低：両日正午に挟まれた24時間の予報最小値',fontsize=8,color='#666666')
+        fig.text(left,.068,note,fontsize=9.8,color='#444444')
+    fig.text(left,.04,'各日の最高：その日の予報最大値　／　夜間の最低：両日正午に挟まれた24時間の予報最小値',fontsize=10,color='#555555')
     out=Path(out_path);out.parent.mkdir(parents=True,exist_ok=True)
     # The PNG is saved at the exact canvas size (no tight crop) so the icon
     # slots' figure fractions map 1:1 onto pixels for emoji compositing.
