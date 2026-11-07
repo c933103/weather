@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read one dated, fresh, checksum-verified data-branch snapshot for 06:00."""
 import argparse
+import concurrent.futures as futures
 import datetime as dt
 import hashlib
 import json
@@ -54,14 +55,19 @@ def main():
     bundle = {k: manifest[k] for k in ('schema', 'target_date_jst', 'collection_utc', 'window_start_utc',
               'window_end_utc', 'long_end_utc', 'collector_commit', 'workflow_run_id', 'quality')}
     bundle.update(data_commit=commit, loaded_at_utc=iso_now(), cities={}, sources={})
-    for key, entry in manifest['files'].items():
+    def read_entry(key, entry):
         if not re.fullmatch(r'latest/[a-z_]+\.json', entry['path']):
             raise ValueError('UNEXPECTED_DATASET_PATH')
         blob = get_bytes(base+entry['path'])
         verify_bytes(blob, entry)
-        record = json.loads(blob)
+        return key, json.loads(blob)
+    with futures.ThreadPoolExecutor(max_workers=4) as pool:
+        records = list(pool.map(lambda kv: read_entry(*kv), manifest['files'].items()))
+    for key, record in records:
         if key == 'official':
             bundle['sources'] = record
+        elif key == 'regional':
+            bundle['regional_forecasts'] = record
         else:
             if record.get('key') != key:
                 raise ValueError('CITY_IDENTITY_MISMATCH')

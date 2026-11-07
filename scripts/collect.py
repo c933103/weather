@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Network-only 05:00 JST pass. No meteorological calculations or charts.
 
-Only the Python standard library is required. Numerical coverage, transport
-success and report completeness are deliberately different states.
+Forecast file decoders are specified in requirements-collection.txt. Numerical
+coverage, transport success and full report completeness are different states.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import sys
 import time
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -38,7 +39,8 @@ CORE_FIELDS = (
     'precipitation_probability,precipitation,rain,snowfall,snow_depth,'
     'wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,'
     'surface_pressure,visibility,cloud_cover_low,surface_temperature,'
-    'shortwave_radiation,direct_radiation,diffuse_radiation,weather_code'
+    'shortwave_radiation,direct_radiation,diffuse_radiation,weather_code,'
+    'shortwave_radiation_instant,direct_radiation_instant,diffuse_radiation_instant'
 ).split(',')
 AIR_FIELDS = (
     'us_aqi,us_aqi_pm2_5,us_aqi_pm10,us_aqi_ozone,us_aqi_nitrogen_dioxide,'
@@ -91,19 +93,20 @@ def audit_hourly(hourly, fields, start, hours=24):
     return status
 
 
-def request(url, params=None, retries=2):
-    if params:
+def request(url, params=None, retries=2, method='GET'):
+    if params and method == 'GET':
         url += ('&' if '?' in url else '?') + urllib.parse.urlencode(params)
     records = []
     for attempt in range(retries + 1):
-        result = {'url': url, 'fetched_at_utc': iso_now(), 'ok': False,
+        result = {'url': url, 'method': method, 'fetched_at_utc': iso_now(), 'ok': False,
                   'http_status': None, 'response': None, 'error': None,
                   'issued_at_utc': None, 'model_initialized_at_utc': None}
         retry_after = None
         try:
-            req = urllib.request.Request(url, headers={
+            req = urllib.request.Request(url, data=urllib.parse.urlencode(params or {}).encode() if method == 'POST' else None, headers={
                 'User-Agent': 'EastAsiaWeatherDaily/3.0 (github.com/c933103/weather)',
                 'Accept': 'application/json,text/plain,text/html;q=0.8,*/*;q=0.5',
+                **({'X-Requested-With': 'XMLHttpRequest', 'Referer': 'https://ocean.cwa.gov.tw/V2/sailing_forecast'} if method == 'POST' and url.startswith('https://ocean.cwa.gov.tw/') else {}),
             })
             with urllib.request.urlopen(req, timeout=25) as response:
                 body = response.read(12_000_000)
@@ -295,7 +298,12 @@ def source_freshness(source, now, max_age_hours=36):
     data = source.get('response')
     issued = None
     if isinstance(data, list) and data and isinstance(data[0], dict):
-        data = data[0]
+        stamps = [(row.get('reportDatetime'), row) for row in data if row.get('reportDatetime')]
+        if stamps:
+            source['per_product_issue_times'] = [{'product': row.get('dataTypeCode'), 'issued_at': stamp} for stamp, row in stamps]
+            data = max(stamps, key=lambda pair: parse_time(pair[0]))[1]
+        else:
+            data = data[0]
     if isinstance(data, dict):
         for key in ('reportDatetime', 'updateTime', 'issueTime'):
             if data.get(key):
@@ -351,7 +359,7 @@ def compact_official(sources):
     """Keep report evidence small; complete pages remain in the raw artifact."""
     result = {}
     for name, source in sources.items():
-        if name.split('/')[0] in CITIES:
+        if name.split('/')[0] in CITIES or name.startswith('regional/') or name == 'pollen/publication_config':
             continue
         normalized = dict(source)
         if name in ('jma/dust', 'cwa/tide_page', 'cwa/tamsui_tides'):
@@ -359,6 +367,19 @@ def compact_official(sources):
             normalized['response_note'] = 'Full page retained in the raw artifact. Parsed CWA tide events are in taipei.json. JMA map HTML alone is not dust forecast data.'
         elif name == 'jma/warning_feed':
             normalized['response'] = {'entries': warning_feed_entries(source.get('response'))[:30]}
+        elif name in ('jma/tokyo_timeline', 'jma/kagawa_timeline') and isinstance(source.get('response'), dict):
+            data = dict(source['response'])
+            city_code = '1310300' if 'tokyo' in name else '3720100'
+            region_code = '130010' if 'tokyo' in name else '370000'
+            series = []
+            for original in data.get('timeSeries', []):
+                row = dict(original)
+                for key in ('class10Items', 'class15Items', 'class20Items'):
+                    if key in row:
+                        row[key] = [v for v in row[key] if v.get('areaCode') in (city_code, region_code)]
+                series.append(row)
+            data['timeSeries'] = series
+            normalized['response'] = data
         elif name.endswith('_warning_xml') and isinstance(source.get('response'), str):
             try:
                 tree = ET.fromstring(source['response'])
@@ -450,6 +471,7 @@ def cwa_tides(source, start, end):
 
 
 def build_jobs(day):
+    from specialists import build_specialist_jobs
     jobs = {}
     for key, (_, lat, lon, _) in CITIES.items():
         coord = {'latitude': lat, 'longitude': lon, 'timezone': 'GMT'}
@@ -483,10 +505,16 @@ def build_jobs(day):
         'hko/local_forecast': 'https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=flw&lang=en',
         'jma/tokyo_forecast': 'https://www.jma.go.jp/bosai/forecast/data/forecast/130000.json',
         'jma/kagawa_forecast': 'https://www.jma.go.jp/bosai/forecast/data/forecast/370000.json',
-        'jma/tokyo_warnings': 'https://www.jma.go.jp/bosai/warning/data/warning/130000.json',
-        'jma/kagawa_warnings': 'https://www.jma.go.jp/bosai/warning/data/warning/370000.json',
-        'jma/tokyo_risk': 'https://www.jma.go.jp/bosai/probability/data/probability/130000.json',
-        'jma/kagawa_risk': 'https://www.jma.go.jp/bosai/probability/data/probability/370000.json',
+        'jma/tokyo_warnings': 'https://www.jma.go.jp/bosai/warning/data/r8/130000.json',
+        'jma/kagawa_warnings': 'https://www.jma.go.jp/bosai/warning/data/r8/370000.json',
+        'jma/tokyo_risk': 'https://www.jma.go.jp/bosai/probability/data/probability/r8/130000.json',
+        'jma/kagawa_risk': 'https://www.jma.go.jp/bosai/probability/data/probability/r8/370000.json',
+        'jma/tokyo_timeline': 'https://www.jma.go.jp/bosai/warning_timeline/data/130000.json',
+        'jma/kagawa_timeline': 'https://www.jma.go.jp/bosai/warning_timeline/data/370000.json',
+        'jma/river_flood_warnings': 'https://www.jma.go.jp/bosai/flood/data/r8/flood_xml.json',
+        'wra/inundation_public_index': 'https://opendata.wra.gov.tw/cloud/5982FloodWarningOfDisasterPreventionInformation/286-%E9%98%B2%E7%81%BD%E8%B3%87%E8%A8%8A_%E6%B7%B9%E6%B0%B4%E8%AD%A6%E6%88%92.kml',
+        'wra/inundation_warning': 'https://fhy.wra.gov.tw/pub_web_2011/kml/KmlShare/NewstFloodWarm.kml',
+        'hko/flood_information': 'https://www.hko.gov.hk/en/wservice/warning/flood.htm',
         'cwa/warnings': 'https://www.cwa.gov.tw/Data/js/warn/Warning_Content.js',
         'cwa/tide_index': 'https://www.cwa.gov.tw/Data/js/fcst/Tide_Time_Data.js',
         'cwa/tide_page': 'https://www.cwa.gov.tw/V8/C/M/tide.html',
@@ -502,6 +530,9 @@ def build_jobs(day):
         'gtsm/blueearth_status': 'https://blueearthdata.org/',
     }
     jobs.update({name: (url, None, False) for name, url in fixed.items()})
+    jobs['cwa/tamsui_hourly_tide'] = ('https://ocean.cwa.gov.tw/V2/map_common/get_station_info', {
+        'end_time': dt.datetime.combine(day, dt.time(5)).strftime('%Y-%m-%d %H:%M:%S'),
+        'station_id': '1102', 'kind': 'tide'}, 'POST')
     start = day
     stop = day + dt.timedelta(days=1)
     for key, station in [('tokyo_minato', 'TK'), ('takamatsu', 'TA')]:
@@ -523,6 +554,7 @@ def build_jobs(day):
         # This URL is redacted before serialization, including failed attempts.
         jobs['cwa/tide_api'] = ('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-A0021-001',
                                 {'Authorization': token, 'format': 'JSON', 'LocationName': '新北市淡水區'}, False)
+    jobs.update(build_specialist_jobs(CITIES))
     return jobs
 
 
@@ -541,6 +573,8 @@ def redact_secrets(value):
 
 
 def collect(day, out):
+    from specialists import extract_snow, extract_pollen, extract_region, REGIONS
+    from coastal import collect_coastal
     now = dt.datetime.now(UTC)
     start = dt.datetime.combine(day, dt.time(6), JST).astimezone(UTC)
     end = start+dt.timedelta(hours=24)
@@ -553,8 +587,9 @@ def collect(day, out):
             'quality': {'ready': False, 'core_24h_ready': False, 'air_24h_ready': False,
                         'chart_384h_ready': False, 'reasons': []}}
     jobs = build_jobs(day)
-    with futures.ThreadPoolExecutor(max_workers=8) as pool:
-        pending = {pool.submit(numerical if numeric_job else request, url, params): name
+    with tempfile.TemporaryDirectory(prefix='weather-coastal-') as coastal_cache, futures.ThreadPoolExecutor(max_workers=8) as pool:
+        coastal_future = pool.submit(collect_coastal, start, end, now, coastal_cache)
+        pending = {pool.submit((lambda u, p: request(u, p, method='POST')) if numeric_job == 'POST' else numerical if numeric_job else request, url, params): name
                    for name, (url, params, numeric_job) in jobs.items()}
         for job in futures.as_completed(pending):
             name = pending[job]
@@ -567,6 +602,13 @@ def collect(day, out):
             root['sources'][name] = source_freshness(source, now, 24*35 if '27_day' in name else 36)
             print(json.dumps({'source': name, 'http': source.get('http_status'),
                               'ok': source['ok'], 'freshness': source.get('freshness')}), flush=True)
+        try:
+            coastal = coastal_future.result()
+        except Exception as exc:
+            coastal = {'ready': False, 'cities': {}, 'error': {'code': 'COASTAL_ADAPTER_ERROR', 'message': str(exc)}}
+        root['sources']['noaa/coastal'] = {'ok': coastal.get('ready', False), 'http_status': None,
+            'fetched_at_utc': iso_now(), 'url': 'https://noaa-gestofs-pds.s3.amazonaws.com/', 'response': coastal,
+            'model_initialized_at_utc': coastal.get('model_initialized_at_utc'), 'error': coastal.get('error')}
     # A live official Atom feed is an independent fallback for stale bosai JSON.
     entries = warning_feed_entries(root['sources']['jma/warning_feed'].get('response'))
     for region, label in [('tokyo', '東京都'), ('kagawa', '香川県')]:
@@ -582,10 +624,15 @@ def collect(day, out):
         check = audit_hourly(hr, CORE_FIELDS, start)
         air_check = audit_hourly(air, AIR_FIELDS, start)
         previous_pressure = audit_hourly(hr, ['pressure_msl'], start-dt.timedelta(hours=24))
+        interval_check = audit_hourly(hr, ['precipitation', 'rain', 'snowfall', 'wind_gusts_10m', 'precipitation_probability'], start+dt.timedelta(hours=1))
         city = {'key': key, 'latitude': lat, 'longitude': lon, 'timezone': zone,
                 'hourly': hr, 'raw_air_quality': air,
-                'checks': {'core_24h': check, 'air_24h': air_check, 'previous_day_pressure': previous_pressure}}
-        core_checks.append(check['ready'] and previous_pressure['ready'])
+                'checks': {'core_24h': check, 'air_24h': air_check, 'previous_day_pressure': previous_pressure, 'preceding_hour_intervals': interval_check}}
+        city['coastal_forecast'] = {**{k: v for k, v in coastal.items() if k not in ('cities', 'downloads')}, **coastal.get('cities', {}).get(key, {'ready': False})}
+        city['snow_probability_inputs'] = extract_snow(root['sources'][f'{key}/snow_ensemble'], start, audit_hourly)
+        if key in ('tokyo_minato', 'takamatsu'):
+            city['pollen'] = extract_pollen(root['sources'][f'{key}/pollen'], start, audit_hourly, root['sources']['pollen/publication_config'])
+        core_checks.append(check['ready'] and previous_pressure['ready'] and interval_check['ready'])
         air_checks.append(air_check['ready'])
         for field, status in check.get('variables', {}).items():
             if not status['ready']:
@@ -612,27 +659,48 @@ def collect(day, out):
             city['astronomical_tide']['official_extrema_rows'] = [root['sources'][f'hko/tide_extremes_{offset}'].get('response') for offset in (0, 1)]
         else:
             city['astronomical_tide'] = cwa_tides(root['sources']['cwa/tamsui_tides'], start, end)
+            station = root['sources']['cwa/tamsui_hourly_tide'].get('response')
+            rows = station.get('chart_data', []) if isinstance(station, dict) else []
+            hourly = []
+            for row in rows:
+                try:
+                    text = str(row.get('datetime'))
+                    stamp = parse_time(text if re.search(r'(Z|[+-]\d\d:\d\d)$', text) else text+'+08:00')
+                except ValueError:
+                    continue
+                if start <= stamp < end and numeric(row.get('astron_tide')):
+                    hourly.append((stamp.isoformat(), row['astron_tide']))
+            city['astronomical_tide']['hourly_reference'] = {
+                'station': 'CWA Danshuei tide station 1102', 'latitude': 25.17569, 'longitude': 121.42483,
+                'units': 'm', 'datum': 'CWA station reference; retain separately from town-level chart/TWVD/MSL event heights',
+                'time': [v[0] for v in hourly], 'height': [v[1] for v in hourly], 'ready': len(hourly) == 24}
+            city['local_coastal_forecast'] = {'provider': 'CWA', 'station_id': '1102', 'chart_data': rows,
+                'note': 'astron_tide is astronomical tide; surge is the forecast coastal water level, not itself a residual. Preserve the common station reference.'}
         root['cities'][name] = city
     q = root['quality']
     q['core_24h_ready'] = all(core_checks)
     q['air_24h_ready'] = all(air_checks)
     q['chart_384h_ready'] = len(chart_checks) == 2 and all(chart_checks)
     q['official_tides_ready'] = all(c['astronomical_tide']['ready'] for c in root['cities'].values())
-    q['all_city_hourly_tides_ready'] = all(len(c['astronomical_tide'].get('time', [])) == 24 for c in root['cities'].values())
+    q['all_city_hourly_tides_ready'] = all(len(c['astronomical_tide'].get('time', [])) == 24 or c['astronomical_tide'].get('hourly_reference', {}).get('ready') is True for c in root['cities'].values())
     q['solar_3day_ready'] = root['sources']['swpc/three_day']['ok'] and root['sources']['swpc/three_day']['freshness']['status'] == 'current'
+    q['coastal_surge_24h_ready'] = coastal.get('ready', False)
+    q['snow_probability_inputs_ready'] = all(c['snow_probability_inputs']['check']['ready'] for c in root['cities'].values())
+    q['pollen_numeric_coverage_ready'] = all(root['cities'][CITIES[k][0]]['pollen']['numeric_coverage']['ready'] for k in ('tokyo_minato', 'takamatsu'))
+    root['regional_forecasts'] = {key: extract_region(key, root['sources'][f'regional/{key}'], start, long_end, parse_time, numeric) for key in REGIONS}
+    q['regional_384h_sample_inputs_ready'] = all(v['ready'] for v in root['regional_forecasts'].values())
     q['reasons'] += [
         'GloFAS grids have not been matched to applicable river reaches and flood thresholds.',
-        'GTSM/GLOSSIS storm-surge numerical adapter is not yet validated; marine sea level is not storm surge.',
-        'Urban inundation forecasts, Japanese pollen and independent snow probabilities require source-specific availability checks.',
-        'Regional 384-hour severe-weather analysis is not established by city point series or a JTWC webpage.',
-        'Taipei coastal reference has official high/low tides; a complete hourly astronomical tide series is not validated.',
+        'Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.',
+        'Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.',
+        'Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.',
     ]
     for name, source in root['sources'].items():
         if not source['ok']:
             q['reasons'].append(f'{name}: request failed ({source.get("http_status")})')
         elif source.get('freshness', {}).get('status') == 'stale':
             q['reasons'].append(f'{name}: stale official issue timestamp; not current warning evidence')
-    for gate in ('core_24h_ready', 'air_24h_ready', 'chart_384h_ready', 'official_tides_ready', 'solar_3day_ready'):
+    for gate in ('core_24h_ready', 'air_24h_ready', 'chart_384h_ready', 'official_tides_ready', 'all_city_hourly_tides_ready', 'solar_3day_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready'):
         if not q[gate]:
             q['reasons'].append(f'{gate}: failed')
     q['ready'] = not q['reasons']
@@ -658,6 +726,10 @@ def collect(day, out):
     file.write_text(json.dumps(official, ensure_ascii=False, separators=(',', ':'), allow_nan=False), encoding='utf-8')
     files['official'] = {'path': 'latest/official.json', 'bytes': file.stat().st_size,
                          'sha256': hashlib.sha256(file.read_bytes()).hexdigest()}
+    file = latest / 'regional.json'
+    file.write_text(json.dumps(root['regional_forecasts'], ensure_ascii=False, separators=(',', ':'), allow_nan=False), encoding='utf-8')
+    files['regional'] = {'path': 'latest/regional.json', 'bytes': file.stat().st_size,
+                         'sha256': hashlib.sha256(file.read_bytes()).hexdigest()}
     manifest = {k: root[k] for k in ('schema', 'target_date_jst', 'collection_utc', 'window_start_utc',
                'window_end_utc', 'long_end_utc', 'collector_commit', 'workflow_run_id', 'quality')}
     manifest['files'] = files
@@ -680,7 +752,8 @@ def main():
     root = collect(day, args.out_dir)
     # Missing core numerical inputs are operational failure, but files are still
     # published by the workflow so the 06:00 report can explain the exact gaps.
-    return 0 if root['quality']['core_24h_ready'] and root['quality']['air_24h_ready'] and root['quality']['chart_384h_ready'] else 2
+    gates = ('core_24h_ready', 'air_24h_ready', 'chart_384h_ready', 'all_city_hourly_tides_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready')
+    return 0 if all(root['quality'].get(k) for k in gates) else 2
 
 
 if __name__ == '__main__':

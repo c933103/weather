@@ -11,7 +11,7 @@ on:
         type: string
   push:
     branches: [main]
-    paths: ['scripts/**', 'tests/**', '.github/workflows/collect.yml']
+    paths: ['scripts/**', 'tests/**', 'requirements-*.txt', '.github/workflows/collect.yml']
 
 permissions:
   contents: write
@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Check out collector
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install forecast file decoders
+        run: python3 -m pip install -r requirements-collection.txt
       - name: Test coverage and failure handling
         run: python3 -m unittest discover -s tests -v
       - name: Collect live numerical data

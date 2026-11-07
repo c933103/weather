@@ -1,0 +1,2 @@
+numpy>=2.0,<3
+thermofeel==2.2.0
