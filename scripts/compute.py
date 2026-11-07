@@ -297,12 +297,12 @@ def compute_city(city, start, end):
                           if wbgt_max < limit), '危険')
     gfs = city.get('gfs') or {}
     gfs_temp = value_range(select(gfs, 'temperature_2m', start, end))
-    gfs_soil = value_range(select(gfs, 'soil_temperature_0cm', start, end))
+    gfs_soil = value_range(select(gfs, 'soil_temperature_0_to_10cm', start, end))
     ifs_surface_min = result['surface_temperature'].get('minimum') if result['surface_temperature'].get('ready') else None
     gfs_soil_min = gfs_soil.get('minimum') if gfs_soil.get('ready') else None
     result['model_crosscheck'] = {
         'gfs_temperature_2m': gfs_temp,
-        'gfs_soil_temperature_0cm': gfs_soil,
+        'gfs_soil_temperature_0_to_10cm': gfs_soil,
         'temperature_max_difference_c': round(abs(result['temperature_2m']['maximum'] - gfs_temp['maximum']), 2)
             if result['temperature_2m'].get('ready') and gfs_temp.get('ready') else None,
         'temperature_min_difference_c': round(abs(result['temperature_2m']['minimum'] - gfs_temp['minimum']), 2)
@@ -310,7 +310,8 @@ def compute_city(city, start, end):
         'frost_agreement': frost_agreement(ifs_surface_min, gfs_soil_min),
         'note': 'NOAA GFS (gfs_seamless via Open-Meteo) as the independent second model; '
                 'the report values remain the ECMWF IFS ones unless the official local '
-                'observatory forecast contradicts them.'}
+                'observatory forecast contradicts them. The GFS frost limb uses its '
+                '0–10 cm soil layer against the IFS surface (skin) temperature.'}
     result['report_digest'] = {
         'dominant_weather_code': Counter(codes).most_common(1)[0][0] if codes else None,
         'humidity_mean': round(sum(humidity) / len(humidity), 1) if len(humidity) == 24 else None,

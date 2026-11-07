@@ -49,7 +49,7 @@ AIR_FIELDS = (
 ).split(',')
 GFS_FIELDS = (
     'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,'
-    'wind_direction_10m,pressure_msl,soil_temperature_0cm,weather_code'
+    'wind_direction_10m,pressure_msl,soil_temperature_0_to_10cm,weather_code'
 ).split(',')
 
 
