@@ -351,7 +351,7 @@ def ecmwf_opendata_track_check(track, now):
     """Alternative ECMWF route inside the workflow: ECMWF open data.
 
     When the OpenCharts cyclone product cannot be obtained, sample the IFS
-    open-data (0.4°) MSLP and 10 m wind at the JTWC track points via the
+    open-data (0.25°) MSLP and 10 m wind at the JTWC track points via the
     per-step .index byte ranges — the same eccodes decoding the coastal
     STOFS limb uses. Failure degrades to a recorded failed source.
     """
@@ -361,7 +361,7 @@ def ecmwf_opendata_track_check(track, now):
                 'error': {'code': 'NO_TRACK_POINTS', 'message': 'warning text carried no usable positions'}}
     run = (now - dt.timedelta(hours=6)).replace(minute=0, second=0, microsecond=0)
     run = run.replace(hour=(run.hour // 12) * 12)
-    base = f'https://data.ecmwf.int/forecasts/{run:%Y%m%d}/{run:%H}z/ifs/0p4-beta/oper/'
+    base = f'https://data.ecmwf.int/forecasts/{run:%Y%m%d}/{run:%H}z/ifs/0p25/oper/'
     index_cache = {}
     samples = []
     for point in points:
@@ -409,8 +409,8 @@ def ecmwf_opendata_track_check(track, now):
     ok = any(s['ecmwf_pressure_msl_hpa'] is not None for s in samples)
     return {'ok': ok, 'http_status': 200 if ok else None, 'fetched_at_utc': iso_now(),
             'url': base,
-            'response': {'model': 'ecmwf_ifs_open_data_0p4', 'samples': samples,
-                         'method': 'ECMWF open-data IFS (0.4°) MSLP and 10 m wind sampled at the '
+            'response': {'model': 'ecmwf_ifs_open_data_0p25', 'samples': samples,
+                         'method': 'ECMWF open-data IFS (0.25°) MSLP and 10 m wind sampled at the '
                                    'JTWC warning-track positions via per-step index byte ranges; '
                                    'the in-workflow alternative when the OpenCharts cyclone '
                                    'product is unavailable.'} if samples else None,
