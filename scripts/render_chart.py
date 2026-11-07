@@ -10,10 +10,14 @@ noon(D) to noon(D+1) window, as requested. The x coordinates are visual
 DATE SLOTS, not claims about the hour of the extrema. This differs from
 placing low at 05:30 of calendar day D.
 
-The chart draws just ONE solid waveform per city, alternating days and nights.
-Its high/low envelope is a continuous translucent fill_between, not rectangles.
-No dotted/dashed temperature lines, no invented extrema, no interpolation over
-missing nights/days. PCHIP smooths *only* between verified sampled extrema.
+The chart draws TWO lines per city: a solid line through the day highs and a
+dashed line through the night lows, with the high/low envelope as a continuous
+translucent fill_between behind them. The envelope spans the full run from
+the first extremum to the last (each boundary curve held flat across the
+half-slot at the run edges), so the first and last 24 hours are shaded just
+like the middle. No invented extrema and no interpolation across a missing
+day or night: a missing extremum breaks its own line and the envelope run.
+PCHIP smooths *only* between verified sampled extrema.
 
 Example:
     python eastasia_weather_chart_renderer.py \
@@ -104,70 +108,65 @@ def extrema_by_date(points, day0, site_tz, max_days=16):
     return highs,night_lows
 
 
-def split_segments(highs,lows):
-    """Complete high--night low--next high triplets. Never cross missing data."""
-    segments=[];current=[]
+def extrema_runs(highs,lows):
+    """Maximal runs of alternating extrema with no missing slot between them.
+
+    Points are (x, value, kind) with highs at integer x and night lows at
+    x+0.5. A gap of more than half a slot (a missing day or night) breaks the
+    run. Crucially the FINAL night low (i=15, x=15.5) belongs to the last run
+    even though no day high follows it — the previous triplet-based builder
+    dropped it, leaving the chart short of t+384.
+    """
+    pts=[]
     for i in range(16):
-        if i not in highs:
-            if len(current)>=3:segments.append(current)
-            current=[]
-            continue
-        if not current:current=[(float(i),highs[i])]
-        # draw the low midpoint only if the next daytime high is also available
-        if i in lows and (i+1) in highs:
-            current.extend([(i+.5,lows[i]),(float(i+1),highs[i+1])])
-        else:
-            if len(current)>=3:segments.append(current)
-            current=[]
-    if len(current)>=3:segments.append(current)
-    # Remove duplicates caused by walking past a high reached from previous i
-    clean=[]
-    for seg in segments:
-        seen={};
-        for x,y in seg:seen[x]=y
-        s=sorted(seen.items())
-        if len(s)>=3: clean.append(s)
-    return clean
+        if i in highs:pts.append((float(i),highs[i],'high'))
+        if i in lows:pts.append((i+.5,lows[i],'low'))
+    pts.sort()
+    runs=[];current=[]
+    for p in pts:
+        if current and p[0]-current[-1][0]>.5+1e-9:
+            runs.append(current);current=[]
+        current.append(p)
+    if current:runs.append(current)
+    return runs
 
 
 def draw_city(ax,highs,lows,color,name):
     # Two-line design (the user's settled chart style): a SOLID line through
     # the day highs at the date positions and a DASHED line through the
     # night lows half a day later (each low is the local noon-to-noon
-    # minimum), with the semi-transparent high/low envelope behind them.
+    # minimum), with the semi-transparent high/low envelope behind them. The
+    # envelope spans each run edge to edge: each boundary curve is held flat
+    # across the half-slot beyond its own end extrema, so the shading covers
+    # the first slot (from t+0) and the last night (to t+384) as well.
     drawn=0
-    for seg in split_segments(highs,lows):
-        x=np.array([p[0] for p in seg]);y=np.array([p[1] for p in seg])
-        hpts=[(px,py) for px,py in seg if float(px).is_integer()]
-        lpts=[(px,py) for px,py in seg if not float(px).is_integer()]
-        # Envelope between the interpolated high and low curves.
-        hxs=np.array([k for k in sorted(highs) if x[0]<=k<=x[-1]],dtype=float)
-        lxs=np.array([k+.5 for k in sorted(lows) if x[0]<=k+.5<=x[-1]],dtype=float)
-        if len(hxs)>=2 and len(lxs)>=2:
-            xx=np.linspace(max(hxs[0],lxs[0]),min(hxs[-1],lxs[-1]),200)
-            if len(xx) and xx[-1]>xx[0]:
-                upper=PchipInterpolator(hxs,np.array([highs[int(v)] for v in hxs]),extrapolate=False)(xx)
-                lower=PchipInterpolator(lxs,np.array([lows[int(v-.5)] for v in lxs]),extrapolate=False)(xx)
-                allowed=np.isfinite(upper)&np.isfinite(lower)&(upper>=lower)
-                ax.fill_between(xx,lower,upper,where=allowed,alpha=.13,color=color,zorder=1,linewidth=0)
-        def smooth(pts):
-            if len(pts)<2:
-                return None
-            px=np.array([p[0] for p in pts]);py=np.array([p[1] for p in pts])
-            sample=np.linspace(px[0],px[-1],max(60,round((px[-1]-px[0])*60)))
-            return sample,PchipInterpolator(px,py,extrapolate=False)(sample)
-        hs=smooth(hpts)
-        if hs:
-            ax.plot(hs[0],hs[1],lw=2.4,color=color,solid_capstyle='round',zorder=4,
-                    label=name if drawn==0 else '_nolegend_')
-        if hpts:
-            ax.plot([p[0] for p in hpts],[p[1] for p in hpts],'o',ms=3.4,color=color,zorder=5)
-        ls=smooth(lpts)
-        if ls:
-            ax.plot(ls[0],ls[1],lw=1.9,color=color,ls=(0,(4,2)),dash_capstyle='round',
-                    zorder=4,label='_nolegend_')
-        if lpts:
-            ax.plot([p[0] for p in lpts],[p[1] for p in lpts],'o',ms=2.8,color=color,zorder=5,alpha=.9)
+    labelled=False
+    for run in extrema_runs(highs,lows):
+        hpts=[(x,y) for x,y,k in run if k=='high']
+        lpts=[(x,y) for x,y,k in run if k=='low']
+        x0,x1=run[0][0],run[-1][0]
+        if hpts and lpts and x1>x0:
+            grid=np.linspace(x0,x1,max(60,int((x1-x0)*60)))
+            def curve(pts):
+                if len(pts)==1:
+                    return np.full(grid.shape,float(pts[0][1]))
+                px=np.array([p[0] for p in pts]);py=np.array([p[1] for p in pts])
+                return PchipInterpolator(px,py,extrapolate=False)(np.clip(grid,px[0],px[-1]))
+            upper,lower=curve(hpts),curve(lpts)
+            allowed=np.isfinite(upper)&np.isfinite(lower)&(upper>=lower)
+            ax.fill_between(grid,lower,upper,where=allowed,alpha=.13,color=color,zorder=1,linewidth=0)
+        def line(pts,ms,**kw):
+            nonlocal labelled
+            if len(pts)>=2:
+                px=np.array([p[0] for p in pts]);py=np.array([p[1] for p in pts])
+                sample=np.linspace(px[0],px[-1],max(60,int((px[-1]-px[0])*60)))
+                ax.plot(sample,PchipInterpolator(px,py,extrapolate=False)(sample),
+                        label=name if not labelled else '_nolegend_',**kw)
+                labelled=True
+            if pts:
+                ax.plot([p[0] for p in pts],[p[1] for p in pts],'o',ms=ms,color=color,zorder=5,alpha=.95)
+        line(hpts,3.4,lw=2.4,color=color,solid_capstyle='round',zorder=4)
+        line(lpts,2.8,lw=1.9,color=color,ls=(0,(4,2)),dash_capstyle='round',zorder=4)
         drawn+=1
     return drawn
 

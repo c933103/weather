@@ -192,6 +192,26 @@ class WarningTrackTests(unittest.TestCase):
         self.assertEqual(parse_warning_track(None, now), [])
 
 
+class ChartRunTests(unittest.TestCase):
+    def test_final_night_low_is_kept(self):
+        from render_chart import extrema_runs
+        highs = {i: 20.0 + i * 0.1 for i in range(16)}
+        lows = {i: 12.0 + i * 0.1 for i in range(16)}
+        runs = extrema_runs(highs, lows)
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0][0][0], 0.0)
+        self.assertEqual(runs[0][-1], (15.5, lows[15], 'low'))
+
+    def test_missing_night_breaks_run(self):
+        from render_chart import extrema_runs
+        highs = {i: 20.0 for i in range(16)}
+        lows = {i: 12.0 for i in range(16) if i != 7}
+        runs = extrema_runs(highs, lows)
+        self.assertEqual(len(runs), 2)
+        self.assertEqual(runs[0][-1][0], 7.0)
+        self.assertEqual(runs[1][0][0], 8.0)
+
+
 class SpaceWeatherTests(unittest.TestCase):
     def test_parse(self):
         sources = {
