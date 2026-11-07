@@ -32,7 +32,7 @@ jobs:
       - name: Install Japanese and weather-symbol fonts
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq fonts-noto-cjk fonts-noto-core
+          sudo apt-get install -y -qq fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji
       - name: Test coverage and failure handling
         run: python3 -m unittest discover -s tests -v
       - name: Collect live numerical data

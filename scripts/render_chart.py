@@ -238,6 +238,45 @@ def daily_icon(row,day,tz):
     return wmo_emoji(Counter(samples).most_common(1)[0][0])
 
 
+def find_emoji_font():
+    """Noto Color Emoji path, or None (matplotlib cannot render CBDT colour
+    emoji as text — the icon rows fell back to faint monochrome glyphs, the
+    regression the user flagged; the PNG therefore composites real colour
+    emoji with PIL, as the original local charts did)."""
+    import glob
+    for cand in ['/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
+                 *glob.glob('/usr/share/fonts/**/NotoColorEmoji.ttf', recursive=True)]:
+        if Path(cand).exists():
+            return cand
+    return None
+
+
+def paste_emojis(png_path, slots, font_path):
+    """Composite colour weather emoji onto the saved PNG at figure-fraction
+    slot positions [(fx, fy, char)]. Returns the number pasted."""
+    from PIL import Image, ImageDraw, ImageFont
+    img = Image.open(png_path).convert('RGBA')
+    font = ImageFont.truetype(font_path, 109)
+    pasted = 0
+    for fx, fy, ch in slots:
+        if not ch or ch == '―':
+            continue
+        tile = Image.new('RGBA', (160, 160), (0, 0, 0, 0))
+        ImageDraw.Draw(tile).text((8, 8), ch, font=font, embedded_color=True)
+        bbox = tile.getbbox()
+        if not bbox:
+            continue
+        glyph = tile.crop(bbox)
+        scale = 40 / glyph.height
+        glyph = glyph.resize((max(1, round(glyph.width * scale)), 40), Image.LANCZOS)
+        cx = fx * img.width - 16
+        cy = (1 - fy) * img.height
+        img.alpha_composite(glyph, (int(cx - glyph.width / 2), int(cy - glyph.height / 2)))
+        pasted += 1
+    img.convert('RGB').save(png_path)
+    return pasted
+
+
 def render(raw,target_day,out_path):
     d0=date.fromisoformat(target_day)
     plt.rcParams.update({'font.family':['Noto Sans CJK JP','Noto Sans Symbols2','DejaVu Sans'],'axes.unicode_minus':False})
@@ -276,9 +315,11 @@ def render(raw,target_day,out_path):
     fig.text(left,.94,'香港・東京都港区｜384時間気温予報',fontsize=16,weight='bold')
     fig.text(left,.905,'実線：日中最高（当日）／破線：夜間最低（日付間・当日正午～翌日正午の最低）｜淡色＝高低の連続帯',fontsize=8.7)
     fig.text(left,.885,'日付位置は時刻を示さない。下段の自信度はIFSアンサンブルの日最高気温の拡散より。気温の接続順は下部のデータ源注記参照。',fontsize=7.8,color='#666666')
+    emoji_font=find_emoji_font()
+    icon_slots=[]
     for row,city in enumerate(('Tokyo Minato Ward','Hong Kong')):
         y=.16-row*.055
-        fig.text(.024,y,SITES[city][0],fontsize=8.5,weight='bold',va='center')
+        fig.text(.024,y,SITES[city][0],fontsize=9.5,weight='bold',va='center')
         src=raws[city]
         # Confidence grades come from the IFS ensemble spread of daily maximum
         # temperature (compute.chart_confidence_for_city). When the bundle
@@ -293,18 +334,29 @@ def render(raw,target_day,out_path):
             dd=d0+timedelta(days=i)
             cc=daily_icon(src,dd,SITES[city][1])
             grade=(grades.get(dd.isoformat()) or {}).get('grade')
-            val=f'{cc}/{grade}' if grade else f'{cc}/未評価'
-            fig.text(left+width*(i/16),y,val,fontsize=7.8,ha='center',va='center')
+            cx=left+width*(i/16)
+            if emoji_font:
+                # Colour emoji are composited onto the PNG afterwards; here
+                # only the grade text is drawn, right of the emoji slot.
+                icon_slots.append((cx,y,cc))
+                fig.text(cx+.006,y,f'/{grade}' if grade else '/未評価',fontsize=8.8,ha='left',va='center')
+            else:
+                val=f'{cc}/{grade}' if grade else f'{cc}/未評価'
+                fig.text(cx,y,val,fontsize=7.8,ha='center',va='center')
     note=cascade_note(raws,d0)
     if note:
         fig.text(left,.068,note,fontsize=7.8,color='#555555')
     fig.text(left,.04,'各日の最高：その日の予報最大値　／　夜間の最低：両日正午に挟まれた24時間の予報最小値',fontsize=8,color='#666666')
     out=Path(out_path);out.parent.mkdir(parents=True,exist_ok=True)
-    fig.savefig(out,bbox_inches='tight',facecolor='white')
-    # SVG twin of the same figure (vector deliverable); the PNG stays as the
-    # raster fallback and keeps its own verification below.
+    # The PNG is saved at the exact canvas size (no tight crop) so the icon
+    # slots' figure fractions map 1:1 onto pixels for emoji compositing.
+    fig.savefig(out,facecolor='white')
+    # SVG twin of the same figure (vector deliverable; its icons stay text
+    # glyphs — the colour compositing applies to the delivered PNG only).
     fig.savefig(out.with_suffix('.svg'),format='svg',bbox_inches='tight',facecolor='white')
     plt.close(fig)
+    if emoji_font and icon_slots:
+        reports['emoji_composited'] = paste_emojis(out, icon_slots, emoji_font)
     from PIL import Image
     with Image.open(out) as im:
         im.verify()
