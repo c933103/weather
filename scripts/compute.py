@@ -49,7 +49,16 @@ def cosine_zenith(stamp, latitude, longitude):
 
 def wbgt(city, start, end):
     import numpy as np
-    import thermofeel
+    try:
+        import thermofeel
+        calculator = thermofeel.calculate_wbgt_liljegren
+    except ImportError:
+        # Offline runtimes can use the same unmodified, licensed ECMWF solver.
+        from vendor import liljegren
+        def calculator(t, rh, pressure, wind, solar, fraction, zenith):
+            wind = np.maximum(wind, liljegren.MIN_WIND_10M)
+            speed = liljegren.wind_speed_2m(wind, zenith, solar)
+            return liljegren.wbgt(t, rh, pressure, speed, solar, fraction, zenith)
     h = city['hourly']
     names = ['temperature_2m', 'relative_humidity_2m', 'surface_pressure', 'wind_speed_10m',
              'shortwave_radiation_instant', 'direct_radiation_instant']
@@ -59,7 +68,7 @@ def wbgt(city, start, end):
     temp, rh, pressure, wind, solar, direct = [np.array([v for _, v in a]) for a in arrays]
     zenith = np.array([cosine_zenith(t, city['latitude'], city['longitude']) for t, _ in arrays[0]])
     fraction = np.divide(direct, solar, out=np.zeros_like(solar), where=solar > 0)
-    values = thermofeel.calculate_wbgt_liljegren(temp+273.15, rh, pressure, wind, solar, fraction, zenith)-273.15
+    values = calculator(temp+273.15, rh, pressure, wind, solar, fraction, zenith)-273.15
     valid = [(t, float(v)) for (t, _), v in zip(arrays[0], values) if np.isfinite(v)]
     result = value_range(valid)
     result.update(method='Liljegren 2008 via ECMWF thermofeel 2.2.0; instantaneous radiation; NOAA solar-position approximation',

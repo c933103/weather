@@ -2,10 +2,11 @@ import datetime as dt
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from collect import UTC, source_freshness, audit_hourly
-from compute import select, snow_probability, cosine_zenith
+from compute import select, snow_probability, cosine_zenith, wbgt
 from specialists import extract_snow, extract_pollen
 
 
@@ -53,6 +54,20 @@ class SpecialistTests(unittest.TestCase):
         noon = dt.datetime(2026, 3, 20, 12, tzinfo=UTC)
         self.assertGreater(cosine_zenith(noon, 0, 0), .99)
         self.assertLess(cosine_zenith(noon, 0, 180), -.99)
+
+    def test_wbgt_offline_without_thermofeel_installation(self):
+        # Reporting may have NumPy but no internet access for package installation.
+        h = {'time': self.times[:-1]}
+        for field, value in [('temperature_2m', 25), ('relative_humidity_2m', 60),
+                              ('surface_pressure', 1013), ('wind_speed_10m', 2),
+                              ('shortwave_radiation_instant', 0), ('direct_radiation_instant', 0)]:
+            h[field] = [value]*24
+        with patch.dict(sys.modules, {'thermofeel': None}):
+            result = wbgt({'hourly': h, 'latitude': 35.658, 'longitude': 139.745}, self.start, self.end)
+        self.assertTrue(result['ready'])
+        self.assertEqual(len(result['hourly']), 24)
+        self.assertGreater(result['minimum'], 15)
+        self.assertLess(result['maximum'], 26)
 
 
 if __name__ == '__main__':

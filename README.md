@@ -59,6 +59,8 @@ python3 scripts/compute.py --input output/report_raw.json --output output/calcul
 
 This implements physically based Liljegren WBGT using ECMWF thermofeel 2.2.0, instantaneous forecast radiation and solar position; conditional wind chill; same-hour 24-hour pressure changes; AQI components; and independent ensemble snowfall probability. Accumulations use `(start,end]` because each source timestamp represents the preceding hour. Instantaneous variables use `[start,end)`.
 
+For a reporting runtime without outbound package access, `scripts/vendor/` contains the unmodified thermofeel 2.2.0 Liljegren solver and helpers with their original license. `compute.py` automatically uses that offline fallback if thermofeel is absent; NumPy is still required.
+
 The 05:00 collector does not run these report calculations.
 
 ## Chart
