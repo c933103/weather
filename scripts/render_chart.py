@@ -218,16 +218,25 @@ def render(raw,target_day,out_path):
     ax.legend(loc='upper right',frameon=False,ncol=2,fontsize=9)
     fig.text(left,.94,'香港・東京都港区｜384時間気温予報',fontsize=16,weight='bold')
     fig.text(left,.905,'日中最高は当日、夜間最低は日付間（当日正午～翌日正午の最低）｜淡色＝高低の連続帯',fontsize=8.7)
-    fig.text(left,.885,'日付位置は時刻を示さない。IFS 9kmの先はEC46 36km・6時間刻みのアンサンブル平均（未補正）。',fontsize=7.8,color='#666666')
+    fig.text(left,.885,'日付位置は時刻を示さない。IFS 9kmの先はEC46 36km・6時間刻みのアンサンブル平均（未補正）。下段の自信度はIFSアンサンブルの日最高気温の拡散より。',fontsize=7.8,color='#666666')
     for row,city in enumerate(('Tokyo Minato Ward','Hong Kong')):
         y=.16-row*.055
         fig.text(.024,y,SITES[city][0],fontsize=8.5,weight='bold',va='center')
         src=raws[city]
+        # Confidence grades come from the IFS ensemble spread of daily maximum
+        # temperature (compute.chart_confidence_for_city). When the bundle
+        # carries no temperature ensemble, the row honestly stays 未評価.
+        grades={}
+        try:
+            from compute import chart_confidence_for_city
+            grades=chart_confidence_for_city(src,d0)
+        except Exception:
+            grades={}
         for i in range(16):
             dd=d0+timedelta(days=i)
             cc=daily_icon(src,dd,SITES[city][1])
-            # No fabricated A/B/C confidence when neither JMA nor ENS provides it.
-            val=f'{cc}/未評価'
+            grade=(grades.get(dd.isoformat()) or {}).get('grade')
+            val=f'{cc}/{grade}' if grade else f'{cc}/未評価'
             fig.text(left+width*(i/16),y,val,fontsize=7.3,ha='center',va='center')
     fig.text(left,.04,'各日の最高：その日の予報最大値　／　夜間の最低：両日正午に挟まれた24時間の予報最小値',fontsize=8,color='#666666')
     out=Path(out_path);out.parent.mkdir(parents=True,exist_ok=True)

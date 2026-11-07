@@ -87,6 +87,33 @@ Surge retrieval, independent snow inputs, Taipei hourly tides and the obsolete J
 
 Optional `CWA_API_KEY` can be supplied as a repository secret for the official datastore. It is never committed or included in saved URLs/errors. Public CWA tide and warning pages do not require this secret.
 
+## 06:00 report support additions
+
+Added for the 06:00 report that consumes this bundle (its tables, hazard
+notes, cyclone section and chart rows are fixed formats):
+
+- **JTWC numbered warnings**: after the ABPW advisory is fetched, the warning
+  text (`wpNNYYweb.txt`) for every active western North Pacific cyclone the
+  advisory names is fetched as its own `jtwc/warning_*` source, so forecast
+  tracks — not just the advisory summary — are in the bundle.
+- **ECMWF cyclone product probe**: the OpenCharts `cyclone` product endpoint
+  is queried every run with the collection day's 00Z base time and the API's
+  response (data, or its own availability error JSON) is retained verbatim as
+  `ecmwf/cyclone_product`. The 06:00 ECMWF tropical-cyclone check is therefore
+  an explicit recorded step; the probe never replaces JTWC warnings.
+- **Chart confidence**: IFS ensemble temperature members for Hong Kong and
+  Tokyo Minato Ward are collected (`temperature_ensemble`), and each chart
+  date is graded 高/中/低 from the population standard deviation of the
+  members' daily maximum temperature (≤1.2 / ≤2.2 °C). Dates beyond the
+  ensemble's native span are graded 低 with the basis recorded. The chart's
+  icon rows print these grades instead of 未評価 when the data is present.
+- **Report digest and cyclone digest**: `calculated.json` carries a per-city
+  `report_digest` (dominant weather code, humidity mean, mean pressure and
+  its 24-hour mean change, wind direction at the maximum-wind hour, WBGT
+  band, and the fixed-threshold 高PM / 霜 flags), PM2.5/PM10 ranges, a
+  `cyclone_watch` digest parsed from ABPW with the warning-source inventory
+  and the ECMWF probe result, and the `chart_confidence` grades.
+
 ## Source documentation
 
 - https://open-meteo.com/en/docs/ecmwf-api

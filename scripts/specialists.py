@@ -23,6 +23,13 @@ def build_specialist_jobs(cities):
         jobs[f'{key}/snow_ensemble'] = ('https://ensemble-api.open-meteo.com/v1/ensemble', {
             'latitude': lat, 'longitude': lon, 'models': 'ecmwf_ifs025',
             'hourly': 'snowfall', 'forecast_days': 3, 'timezone': 'GMT'}, True)
+    # Temperature members for the two chart cities: the 06:00 chart confidence
+    # grades come from the ensemble spread of daily maximum temperature.
+    for key in ('hong_kong', 'tokyo_minato'):
+        _, lat, lon, _ = cities[key]
+        jobs[f'{key}/temperature_ensemble'] = ('https://ensemble-api.open-meteo.com/v1/ensemble', {
+            'latitude': lat, 'longitude': lon, 'models': 'ecmwf_ifs025',
+            'hourly': 'temperature_2m', 'forecast_days': 16, 'timezone': 'GMT'}, True)
     for key, code in [('tokyo_minato', '13103'), ('takamatsu', '37201')]:
         jobs[f'{key}/pollen'] = (f'https://site.weathernews.jp/site/pollen/json/fcst/city_r5/{code}.json', None, False)
     jobs['pollen/publication_config'] = ('https://weathernews.jp/pollen/html_resources/city/bundle.min.js', None, False)
@@ -44,6 +51,33 @@ def extract_snow(source, start, audit):
     return {'model': 'ecmwf_ifs025_ensemble', 'hourly': hourly,
             'units': raw.get('hourly_units', {}) if isinstance(raw, dict) else {}, 'check': check,
             'method': '06:00: fraction of all 51 members with >0 cm snow accumulated within the exact 24h window. Retain the threshold/denominator. Do not infer this from rain probability.'}
+
+
+def extract_temperature_ensemble(source, start, end):
+    """Keep the IFS ensemble temperature members for the chart cities.
+
+    The 06:00 chart grades each day's confidence from the spread of the
+    members' daily maximum temperature. Members are retained verbatim; the
+    ensemble's native span (about 15 days) is recorded, never extended.
+    """
+    raw = source.get('response')
+    hourly = raw.get('hourly', {}) if source['ok'] and isinstance(raw, dict) else {}
+    fields = [k for k in hourly if re.fullmatch(r'temperature_2m(?:_member\d+)?', k)]
+    times = []
+    for text in hourly.get('time', []):
+        try:
+            times.append(dt.datetime.fromisoformat(str(text).replace('Z', '+00:00')))
+        except ValueError:
+            continue
+    in_span = [t for t in times if start <= t < end]
+    return {'model': 'ecmwf_ifs025_ensemble', 'hourly': hourly,
+            'units': raw.get('hourly_units', {}) if isinstance(raw, dict) else {},
+            'check': {'member_fields': len(fields), 'members_ready': len(fields) >= 40,
+                      'first_utc': times[0].isoformat() if times else None,
+                      'last_utc': times[-1].isoformat() if times else None,
+                      'samples_in_chart_span': len(in_span)},
+            'method': 'Per local date, take each member\'s daily maximum temperature; '
+                      'confidence grade from the population standard deviation across members.'}
 
 
 def extract_pollen(source, start, audit, config):

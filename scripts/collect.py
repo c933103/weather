@@ -336,6 +336,24 @@ def source_freshness(source, now, max_age_hours=36):
     return source
 
 
+def jtwc_system_ids(text):
+    """Active western North Pacific system ids (e.g. '31W') named in ABPW.
+
+    Invest areas (90W-99W) are included here; the caller skips warning files
+    for them because JTWC issues numbered warnings only for tropical cyclones.
+    """
+    if not isinstance(text, str):
+        return []
+    ids = re.findall(r'\b(\d{2}[WE])\s*\([A-Z][A-Z\- ]*\)', text)
+    ids += re.findall(r'(?:TYPHOON|TROPICAL STORM|TROPICAL DEPRESSION)\s+(\d{2}[WE])\b', text)
+    seen = []
+    for value in ids:
+        value = value.upper()
+        if value not in seen:
+            seen.append(value)
+    return seen
+
+
 def warning_feed_entries(text):
     try:
         tree = ET.fromstring(text)
@@ -573,7 +591,7 @@ def redact_secrets(value):
 
 
 def collect(day, out):
-    from specialists import extract_snow, extract_pollen, extract_region, REGIONS
+    from specialists import extract_snow, extract_pollen, extract_region, extract_temperature_ensemble, REGIONS
     from coastal import collect_coastal
     now = dt.datetime.now(UTC)
     start = dt.datetime.combine(day, dt.time(6), JST).astimezone(UTC)
@@ -615,6 +633,32 @@ def collect(day, out):
         match = next((item for item in entries if label in item['content'] and 'VPWW53' in item['url']), None)
         if match:
             root['sources'][f'jma/{region}_warning_xml'] = source_freshness(request(match['url']), now)
+    # JTWC numbered warnings for every active cyclone ABPW names (the advisory
+    # alone carries no forecast track), plus a machine-readable probe of the
+    # ECMWF OpenCharts cyclone product so the 06:00 ECMWF tropical-cyclone
+    # check is an explicit recorded step, never a silent omission. ECMWF's API
+    # answers with its own availability/error JSON; whatever it returns is
+    # retained verbatim as the probe result.
+    abpw_text = root['sources']['jtwc/outlook'].get('response')
+    for system in jtwc_system_ids(abpw_text):
+        number, basin = system[:2], system[2]
+        if basin != 'W' or int(number) >= 90:
+            continue
+        url = f'https://www.metoc.navy.mil/jtwc/products/wp{number}{now.year % 100:02d}web.txt'
+        try:
+            root['sources'][f'jtwc/warning_{system.lower()}'] = source_freshness(request(url), now)
+        except Exception as exc:
+            root['sources'][f'jtwc/warning_{system.lower()}'] = {'ok': False, 'http_status': None,
+                'fetched_at_utc': iso_now(), 'url': url, 'response': None,
+                'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
+    base_time = urllib.parse.quote(now.strftime('%Y-%m-%dT00:00:00Z'), safe='')
+    ecmwf_url = f'https://charts.ecmwf.int/opencharts-api/v1/products/cyclone/?base_time={base_time}'
+    try:
+        root['sources']['ecmwf/cyclone_product'] = source_freshness(request(ecmwf_url), now)
+    except Exception as exc:
+        root['sources']['ecmwf/cyclone_product'] = {'ok': False, 'http_status': None,
+            'fetched_at_utc': iso_now(), 'url': ecmwf_url, 'response': None,
+            'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
     core_checks = []
     air_checks = []
     chart_checks = []
@@ -630,6 +674,9 @@ def collect(day, out):
                 'checks': {'core_24h': check, 'air_24h': air_check, 'previous_day_pressure': previous_pressure, 'preceding_hour_intervals': interval_check}}
         city['coastal_forecast'] = {**{k: v for k, v in coastal.items() if k not in ('cities', 'downloads')}, **coastal.get('cities', {}).get(key, {'ready': False})}
         city['snow_probability_inputs'] = extract_snow(root['sources'][f'{key}/snow_ensemble'], start, audit_hourly)
+        if key in ('hong_kong', 'tokyo_minato'):
+            city['temperature_ensemble'] = extract_temperature_ensemble(
+                root['sources'][f'{key}/temperature_ensemble'], start, long_end)
         if key in ('tokyo_minato', 'takamatsu'):
             city['pollen'] = extract_pollen(root['sources'][f'{key}/pollen'], start, audit_hourly, root['sources']['pollen/publication_config'])
         core_checks.append(check['ready'] and previous_pressure['ready'] and interval_check['ready'])
@@ -689,6 +736,11 @@ def collect(day, out):
     q['pollen_numeric_coverage_ready'] = all(root['cities'][CITIES[k][0]]['pollen']['numeric_coverage']['ready'] for k in ('tokyo_minato', 'takamatsu'))
     root['regional_forecasts'] = {key: extract_region(key, root['sources'][f'regional/{key}'], start, long_end, parse_time, numeric) for key in REGIONS}
     q['regional_384h_sample_inputs_ready'] = all(v['ready'] for v in root['regional_forecasts'].values())
+    q['chart_confidence_inputs_ready'] = all(
+        root['cities'][CITIES[k][0]]['temperature_ensemble']['check']['members_ready']
+        for k in ('hong_kong', 'tokyo_minato'))
+    warning_sources = [s for n, s in root['sources'].items() if n.startswith('jtwc/warning_')]
+    q['jtwc_warnings_ready'] = all(s['ok'] for s in warning_sources)
     q['reasons'] += [
         'GloFAS grids have not been matched to applicable river reaches and flood thresholds.',
         'Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.',
