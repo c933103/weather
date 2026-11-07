@@ -66,6 +66,49 @@ def _kp_values(text):
     return [v for v in values if 0 <= v <= 9]
 
 
+def _nict_digest(sources):
+    """NICT daily space-weather report digest (Japan's own bulletin).
+
+    The report is discovered through the centre's JSON API
+    (nict/report_latest names the current issue and its text body,
+    fetched as nict/report_body). Extracted factually: the issue id and
+    update time, the summary verbatim, Kakioka's past-24h maximum K index,
+    the next-day geomagnetic/solar outlook phrases, and the largest flare
+    class mentioned. Corroboration for the SWPC-based digest — the
+    'extreme' bar stays SWPC-defined.
+    """
+    latest = sources.get('nict/report_latest', {}).get('response')
+    if isinstance(latest, str):
+        try:
+            latest = json.loads(latest)
+        except ValueError:
+            latest = None
+    item = {}
+    if isinstance(latest, dict):
+        items = latest.get('items') or []
+        if items and isinstance(items[0], dict):
+            item = items[0]
+    body = sources.get('nict/report_body', {}).get('response')
+    text = ''
+    if isinstance(body, str):
+        text = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', body))
+    k = re.search(r'過去24時間の最大K指数は\s*(\d+)', text)
+    geo = re.search(r'今後1日間、地磁気活動は(.+?)予想されます', text)
+    sol = re.search(r'今後1日間、太陽活動は(.+?)予想されます', text)
+    rank = {'C': 0, 'M': 1, 'X': 2}
+    # Flare classes appear as 'C6.2フレア' in prose and as 'M3.5/2B' in the
+    # report's 3-day flare table; both forms count.
+    flares = [(cls, float(v)) for cls, v in
+              re.findall(r'([CMX])(\d+(?:\.\d+)?)(?:フレア|/)', text)]
+    largest = max(flares, key=lambda f: (rank[f[0]], f[1])) if flares else None
+    return {'report_id': item.get('id'), 'updated': item.get('updated'),
+            'summary': item.get('summary'),
+            'kakioka_k_max_24h': int(k.group(1)) if k else None,
+            'geomagnetic_outlook': geo.group(1).strip() if geo else None,
+            'solar_outlook': sol.group(1).strip() if sol else None,
+            'largest_flare_class': f'{largest[0]}{largest[1]:g}' if largest else None}
+
+
 def parse_space_weather(sources):
     """Digest of the NOAA SWPC space-weather products in the official bundle.
 
@@ -92,8 +135,10 @@ def parse_space_weather(sources):
             'max_g_scale_in_outlook': max_g,
             'max_kp_in_outlook': max(kp_values) if kp_values else None,
             'extreme': bool(warning_ids) or (max_g is not None and max_g >= 2),
+            'nict': _nict_digest(sources),
             'sources_ok': {k: sources.get(k, {}).get('ok') for k in
-                           ('swpc/alerts', 'swpc/three_day', 'swpc/geomag', 'nict/space_weather')}}
+                           ('swpc/alerts', 'swpc/three_day', 'swpc/geomag',
+                            'nict/report_latest', 'nict/report_body')}}
 
 
 def grade_from_spread(spread):

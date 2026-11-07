@@ -760,7 +760,7 @@ def build_jobs(day):
         'cwa/tamsui_tides': 'https://www.cwa.gov.tw/V8/C/M/Fishery/tide_30day_MOD/T500010.html',
         'jma/dust': 'https://www.jma.go.jp/bosai/map.html#contents=kosa',
         'jma/warning_feed': 'https://www.data.jma.go.jp/developer/xml/feed/extra.xml',
-        'nict/space_weather': 'https://swc.nict.go.jp/',
+        'nict/report_latest': 'https://swc.nict.go.jp/data/api/report-ja-daily-latest.json',
         'swpc/alerts': 'https://services.swpc.noaa.gov/products/alerts.json',
         'swpc/three_day': 'https://services.swpc.noaa.gov/text/3-day-forecast.txt',
         'swpc/geomag': 'https://services.swpc.noaa.gov/text/3-day-geomag-forecast.txt',
@@ -858,6 +858,24 @@ def collect(day, out):
         match = next((item for item in entries if label in item['content'] and 'VPWW53' in item['url']), None)
         if match:
             root['sources'][f'jma/{region}_warning_xml'] = source_freshness(request(match['url']), now)
+    # NICT's actual space-weather bulletin is its daily report, not the
+    # centre's homepage (whose served HTML carries no parseable forecast
+    # text — verified 2026-11-07). The site's JSON API names the latest
+    # report and the URL of its text body; fetch that body as a second source.
+    nict_latest = root['sources'].get('nict/report_latest', {}).get('response')
+    nict_body_url = None
+    if isinstance(nict_latest, dict):
+        nict_items = nict_latest.get('items') or []
+        if nict_items and isinstance(nict_items[0], dict):
+            nict_body_url = nict_items[0].get('body')
+    if nict_body_url:
+        nict_body_url = nict_body_url.replace('http://', 'https://', 1)
+        try:
+            root['sources']['nict/report_body'] = source_freshness(request(nict_body_url), now)
+        except Exception as exc:
+            root['sources']['nict/report_body'] = {'ok': False, 'http_status': None,
+                'fetched_at_utc': iso_now(), 'url': nict_body_url, 'response': None,
+                'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
     # JTWC numbered warnings for every active cyclone ABPW names (the advisory
     # alone carries no forecast track), plus a machine-readable probe of the
     # ECMWF OpenCharts cyclone product so the 06:00 ECMWF tropical-cyclone

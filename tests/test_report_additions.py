@@ -242,10 +242,32 @@ class SpaceWeatherTests(unittest.TestCase):
         digest = parse_space_weather(sources)
         self.assertEqual(digest['max_kp_in_outlook'], 5.0)
 
+    def test_nict_daily_report_digest(self):
+        sources = {
+            'nict/report_latest': {'ok': True, 'response': {'items': [{
+                'id': 'd2026311_12', 'updated': '2026-11-07T21:00+09:00',
+                'summary': '太陽活動はやや活発でした。',
+                'body': 'https://example.invalid/d2026311_12.txt'}]}},
+            'nict/report_body': {'ok': True, 'response':
+                '【地磁気活動】<br>気象庁地磁気観測所（柿岡）によると、過去24時間の最大K指数は4でした。'
+                '<br>今後1日間、地磁気活動は活発な状態が予想されます。'
+                '<br>今後1日間、太陽活動は活発な状態が予想されます。'
+                '<br>最大のものは、7日11時57分UTに発生したC6.2フレアでした。'
+                '<br>11月5日 M3.5フレアが発生。'},
+        }
+        digest = parse_space_weather(sources)
+        nict = digest['nict']
+        self.assertEqual(nict['report_id'], 'd2026311_12')
+        self.assertEqual(nict['kakioka_k_max_24h'], 4)
+        self.assertEqual(nict['geomagnetic_outlook'], '活発な状態が')
+        self.assertEqual(nict['largest_flare_class'], 'M3.5')
+        self.assertTrue(digest['sources_ok']['nict/report_body'])
+
     def test_quiet(self):
         digest = parse_space_weather({})
         self.assertIsNone(digest['alerts_count'])
         self.assertFalse(digest['extreme'])
+        self.assertIsNone(digest['nict']['report_id'])
 
 
 class FrostAgreementTests(unittest.TestCase):
