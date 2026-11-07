@@ -68,12 +68,14 @@ def get_hourly(root, city):
         raise ValueError(f'{city}: missing/inconsistent ECMWF hourly time and temperature arrays.')
     tmins = hourly.get('temperature_2m_min') or []
     tmaxs = hourly.get('temperature_2m_max') or []
+    markers = hourly.get('sample_model') or []
     arr = []
     for idx,(t,v) in enumerate(zip(times,values)):
         if isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v):
             vmin = tmins[idx] if idx < len(tmins) and isinstance(tmins[idx], (int, float)) else None
             vmax = tmaxs[idx] if idx < len(tmaxs) and isinstance(tmaxs[idx], (int, float)) else None
-            arr.append((parse_utc(t), float(v), vmin, vmax))
+            marker = markers[idx] if idx < len(markers) else None
+            arr.append((parse_utc(t), float(v), vmin, vmax, marker))
     arr = sorted(set(arr),key=lambda z:z[0])
     if len(arr) < 8:
         raise ValueError(f'{city}: not enough true time-stamped ECMWF samples.')
@@ -93,32 +95,49 @@ def enough_coverage(points, start, end):
     return True,valid
 
 
-def extrema_by_date(points, day0, site_tz, max_days=28):
+def extrema_by_date(points, day0, site_tz, max_days=28, member_extrema=None):
     # All extrema windows are *local* calendar day/noon windows. Their graphical
     # positions are slot indices regardless of their actual forecast hour.
-    # Points are (stamp, value, interval_min, interval_max): where the source
-    # provides per-interval extremes (EC46's temperature_2m_min/max fields),
-    # the day high / night low use them instead of the sampled values, which
-    # at 6-hourly sampling miss the sub-interval peaks of the mean series.
-    points=[(p[0],p[1],p[2] if len(p)>2 else None,p[3] if len(p)>3 else None) for p in points]
-    stripped=[(t,v) for t,v,_,_ in points]
+    # Points are (stamp, value, interval_min, interval_max, sample_model).
+    # Precedence per window: (1) on majority-ensemble-sourced windows, the
+    # mean of the members' own extrema (member_extrema) — an extremum of the
+    # ensemble-mean series is biased at every lead; (2) the source's
+    # per-interval extremes (EC46's temperature_2m_min/max fields), which at
+    # 6-hourly sampling recover the mean series' sub-interval peaks;
+    # (3) the sampled values themselves (the deterministic tier).
+    points=[(p[0],p[1],p[2] if len(p)>2 else None,p[3] if len(p)>3 else None,
+             p[4] if len(p)>4 else None) for p in points]
+    stripped=[(t,v) for t,v,_,_,_ in points]
+    member_extrema = member_extrema or {}
+
+    def ensemble_majority(window_points):
+        marks=[m for *_, m in window_points if m]
+        return bool(marks) and sum(1 for m in marks if 'ensemble' in m) * 2 > len(marks)
+
     highs={}; night_lows={}
     for i in range(max_days):
         d=day0+timedelta(days=i)
+        override=member_extrema.get(d.isoformat()) or {}
         start=datetime.combine(d,time.min,tzinfo=site_tz).astimezone(timezone.utc)
         stop=start+timedelta(days=1)
         ok,_=enough_coverage(stripped,start,stop)
         if ok:
-            window=[(v,vx) for t,v,_,vx in points if start<=t<stop]
-            highs[i]=max(vx if vx is not None else v for v,vx in window)
+            window=[p for p in points if start<=p[0]<stop]
+            if override.get('high') is not None and ensemble_majority(window):
+                highs[i]=override['high']
+            else:
+                highs[i]=max(p[3] if p[3] is not None else p[1] for p in window)
         # Night separating the labelled day and following day:
         # NOON THIS DAY -> NOON NEXT DAY (never calendar-day minima).
         ns=datetime.combine(d,time(12,0),tzinfo=site_tz).astimezone(timezone.utc)
         ne=ns+timedelta(days=1)
         ok,_=enough_coverage(stripped,ns,ne)
         if ok:
-            window=[(v,vn) for t,v,vn,_ in points if ns<=t<ne]
-            night_lows[i]=min(vn if vn is not None else v for v,vn in window)
+            window=[p for p in points if ns<=p[0]<ne]
+            if override.get('night_low') is not None and ensemble_majority(window):
+                night_lows[i]=override['night_low']
+            else:
+                night_lows[i]=min(p[2] if p[2] is not None else p[1] for p in window)
     return highs,night_lows
 
 
@@ -237,13 +256,13 @@ def cascade_note(raws,day0=None):
         if hk:parts.append(f'香港 {fmt(hk)}')
         base='気温データ源（信頼度の高い順に接続）：'+'｜'.join(parts)
     labels=[label for segs in per_city.values() for label,_,_ in segs]
-    if any('EC46' in label for label in labels):
-        base+='｜EC46区間はアンサンブル平均（日々の変動は抑制）・天気はメンバー確率による'
+    if any('アンサンブル' in label for label in labels):
+        base+='｜アンサンブル区間の最高・最低はメンバー極値の平均（平均場の極値は使わない）・日々の変動は抑制・天気はメンバー確率による'
     return base
 
 
-def ec46_probability_icon(probs):
-    """Day icon from EC46 member probabilities (see extract_ec46_daily).
+def member_probability_icon(probs):
+    """Day icon from ensemble member probabilities (EC46 or IFS ENS).
 
     Snow when at least half the members carry >= 0.5 cm; rain when at least
     half carry >= 10 mm or >= 1 mm; a rain-leaning icon at >= 30% for 1 mm;
@@ -258,6 +277,9 @@ def ec46_probability_icon(probs):
     return '☀' if cloud<20 else '🌤' if cloud<50 else '⛅' if cloud<80 else '☁'
 
 
+ec46_probability_icon = member_probability_icon
+
+
 def daily_icon(row,day,tz):
     hr=row.get('chart_hourly') or row.get('hourly') or {}
     ts=hr.get('time') or [];wc=hr.get('weather_code') or []
@@ -268,7 +290,12 @@ def daily_icon(row,day,tz):
     if len(models)==len(ts):
         day_models=[m for t,m in zip(ts,models) if parse_utc(t).astimezone(tz).date()==day]
         if day_models and sum(1 for m in day_models if m and 'ec46' in m)>len(day_models)/2:
-            return ec46_probability_icon((row.get('ec46_daily') or {}).get(day.isoformat()))
+            return member_probability_icon((row.get('ec46_daily') or {}).get(day.isoformat()))
+        if day_models and sum(1 for m in day_models if m and 'ifs025_ensemble' in m)>len(day_models)/2:
+            # IFS-ENS-sourced days likewise never use a mean-state code (the
+            # ENS tier carries none anyway); member probabilities instead.
+            return member_probability_icon(
+                ((row.get('temperature_ensemble') or {}).get('daily') or {}).get(day.isoformat()))
     samples=[]
     for t,c in zip(ts,wc):
         d=parse_utc(t).astimezone(tz)
@@ -332,7 +359,8 @@ def render(raw,target_day,out_path):
         # Explicitly refuse any file that is declared synthetic/test fixture.
         if raw.get('synthetic') is True or raw.get('test_fixture') is True:
             raise ValueError('Synthetic data cannot be issued as a weather chart.')
-        highs,lows=extrema_by_date(arr,d0,SITES[city][1])
+        highs,lows=extrema_by_date(arr,d0,SITES[city][1],
+                                   member_extrema=((raw.get('cities') or {}).get(city) or {}).get('member_extrema'))
         completed=draw_city(ax,highs,lows,colors[i],SITES[city][0])
         reports[city]={'high_days':len(highs),'noon_to_noon_nights':len(lows),'rendered_segments':completed,
                        'forecast_first_utc':arr[0][0].isoformat(),'forecast_last_utc':arr[-1][0].isoformat(),'model':model}

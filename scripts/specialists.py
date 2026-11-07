@@ -29,7 +29,8 @@ def build_specialist_jobs(cities):
         _, lat, lon, _ = cities[key]
         jobs[f'{key}/temperature_ensemble'] = ('https://ensemble-api.open-meteo.com/v1/ensemble', {
             'latitude': lat, 'longitude': lon, 'models': 'ecmwf_ifs025',
-            'hourly': 'temperature_2m', 'forecast_days': 16, 'timezone': 'GMT'}, True)
+            'hourly': 'temperature_2m,precipitation,cloud_cover',
+            'forecast_days': 16, 'timezone': 'GMT'}, True)
     for key, code in [('tokyo_minato', '13103'), ('takamatsu', '37201')]:
         jobs[f'{key}/pollen'] = (f'https://site.weathernews.jp/site/pollen/json/fcst/city_r5/{code}.json', None, False)
     jobs['pollen/publication_config'] = ('https://weathernews.jp/pollen/html_resources/city/bundle.min.js', None, False)
@@ -53,12 +54,83 @@ def extract_snow(source, start, audit):
             'method': '06:00: fraction of all 51 members with >0 cm snow accumulated within the exact 24h window. Retain the threshold/denominator. Do not infer this from rain probability.'}
 
 
-def extract_temperature_ensemble(source, start, end):
+def _night_key(local):
+    """The noon-to-noon night a local stamp belongs to, keyed by the date
+    whose noon starts it (the chart's night-low slot for that date)."""
+    return local.date() if local.hour >= 12 else local.date() - dt.timedelta(days=1)
+
+
+def _member_daily(hourly, times, tz, with_rain=True):
+    """Per-local-date member statistics shared by the ensemble extractors.
+
+    Extrema are the MEAN OF THE MEMBERS' OWN daily extrema (the expected
+    daily high / night low of the ensemble), never extrema of the ensemble
+    mean series, which are biased at every lead. Rain probability is the
+    share of members whose daily precipitation sum clears 1 mm; the dry-day
+    icon grades on the members' mean daytime cloud cover.
+    """
+    def fields(prefix):
+        return [k for k in hourly if re.fullmatch(rf'{prefix}(?:_member\d+)?', k)]
+
+    tfields, pfields, cfields = fields('temperature_2m'), fields('precipitation'), fields('cloud_cover')
+    if not tfields or not times:
+        return {}
+    locals_ = [t.astimezone(tz) if t else None for t in times]
+    days, nights = {}, {}
+    for i, local in enumerate(locals_):
+        if local is None:
+            continue
+        days.setdefault(local.date(), []).append(i)
+        nights.setdefault(_night_key(local), []).append(i)
+
+    def member_extrema(flist, idx, fn):
+        vals = []
+        for f in flist:
+            xs = [hourly[f][i] for i in idx if i < len(hourly[f]) and isinstance(hourly[f][i], (int, float))]
+            if xs and len(xs) * 2 >= len(idx):
+                vals.append(fn(xs))
+        return vals
+
+    out = {}
+    all_days = sorted(set(days) | set(nights))
+    for d in all_days:
+        idx, nidx = days.get(d, []), nights.get(d, [])
+        highs = member_extrema(tfields, idx, max) if idx else []
+        lows = member_extrema(tfields, nidx, min) if nidx else []
+        entry = {'members': len(highs) or len(lows) or None,
+                 'temp_high_member_mean': round(sum(highs) / len(highs), 2) if highs else None,
+                 'temp_nightlow_member_mean': round(sum(lows) / len(lows), 2) if lows else None,
+                 'p_rain_1mm': None, 'daytime_cloud_mean': None}
+        if with_rain and pfields and idx:
+            sums = []
+            for f in pfields:
+                xs = [hourly[f][i] for i in idx if i < len(hourly[f]) and isinstance(hourly[f][i], (int, float))]
+                if xs:
+                    sums.append(sum(xs))
+            if sums:
+                entry['p_rain_1mm'] = round(sum(1 for v in sums if v >= 1.0) / len(sums), 3)
+        if cfields and idx:
+            clouds = []
+            for f in cfields:
+                xs = [hourly[f][i] for i in idx if i < len(hourly[f])
+                      and isinstance(hourly[f][i], (int, float)) and 9 <= locals_[i].hour <= 18]
+                if xs:
+                    clouds.append(sum(xs) / len(xs))
+            if clouds:
+                entry['daytime_cloud_mean'] = round(sum(clouds) / len(clouds), 1)
+        out[d.isoformat()] = entry
+    return out
+
+
+def extract_temperature_ensemble(source, start, end, tz_name=None):
     """Keep the IFS ensemble temperature members for the chart cities.
 
     The 06:00 chart grades each day's confidence from the spread of the
     members' daily maximum temperature. Members are retained verbatim; the
     ensemble's native span (about 15 days) is recorded, never extended.
+    With tz_name, also returns per-date member statistics ('daily': member
+    extrema means, rain probability, daytime cloud) for the chart's
+    ensemble-sourced days.
     """
     raw = source.get('response')
     hourly = raw.get('hourly', {}) if source['ok'] and isinstance(raw, dict) else {}
@@ -73,6 +145,16 @@ def extract_temperature_ensemble(source, start, end):
         # so they compare cleanly with the aware report window.
         times.append(parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc))
     in_span = [t for t in times if start <= t < end]
+    daily = {}
+    if tz_name:
+        aligned = []
+        for text in hourly.get('time', []):
+            try:
+                parsed = dt.datetime.fromisoformat(str(text).replace('Z', '+00:00'))
+                aligned.append(parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc))
+            except ValueError:
+                aligned.append(None)
+        daily = _member_daily(hourly, aligned, ZoneInfo(tz_name))
     mean_time, mean_temp = [], []
     raw_times = hourly.get('time', [])
     for i, text in enumerate(raw_times):
@@ -83,6 +165,7 @@ def extract_temperature_ensemble(source, start, end):
             mean_temp.append(round(sum(values) / len(values), 3))
     return {'model': 'ecmwf_ifs025_ensemble', 'hourly': hourly,
             'mean_hourly': {'time': mean_time, 'temperature_2m': mean_temp},
+            'daily': daily,
             'units': raw.get('hourly_units', {}) if isinstance(raw, dict) else {},
             'check': {'member_fields': len(fields), 'members_ready': len(fields) >= 40,
                       'first_utc': times[0].isoformat() if times else None,
@@ -200,4 +283,13 @@ def extract_ec46_daily(source, tz_name):
             'p_rain_10mm': round(sum(1 for v in ps if v >= 10.0) / len(ps), 3) if ps else None,
             'p_snow': round(sum(1 for v in ss if v >= 0.5) / len(ss), 3) if ss else None,
             'daytime_cloud_mean': round(sum(clouds) / len(clouds), 1) if clouds else None}
+    # Member temperature extrema for the same days: the plotted EC46 high /
+    # night low is the mean of the members' own extrema, replacing extrema
+    # of the ensemble-mean series (and its interval min/max fields).
+    utc_stamps = [s.astimezone(dt.timezone.utc) for s in stamps]
+    for ds, entry in _member_daily(hourly, utc_stamps, tz, with_rain=False).items():
+        if ds in out:
+            out[ds]['temp_members'] = entry.get('members')
+            out[ds]['temp_high_member_mean'] = entry.get('temp_high_member_mean')
+            out[ds]['temp_nightlow_member_mean'] = entry.get('temp_nightlow_member_mean')
     return out

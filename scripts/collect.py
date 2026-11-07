@@ -725,7 +725,7 @@ def build_jobs(day):
             # the IFS tiers come from member probabilities instead.
             jobs[f'{key}/ec46_members'] = ('https://seasonal-api.open-meteo.com/v1/seasonal', {
                 **coord, 'models': 'ecmwf_ec46',
-                'hourly': 'precipitation,cloud_cover,snowfall',
+                'hourly': 'precipitation,cloud_cover,snowfall,temperature_2m',
                 'forecast_days': 31}, True)
         # Provisional grids are raw evidence, never validated urban flood forecasts.
         jobs[f'{key}/glofas_unvalidated'] = ('https://flood-api.open-meteo.com/v1/flood', {
@@ -938,7 +938,7 @@ def collect(day, out):
         city['snow_probability_inputs'] = extract_snow(root['sources'][f'{key}/snow_ensemble'], start, audit_hourly)
         if key in ('hong_kong', 'tokyo_minato'):
             city['temperature_ensemble'] = extract_temperature_ensemble(
-                root['sources'][f'{key}/temperature_ensemble'], start, long_end)
+                root['sources'][f'{key}/temperature_ensemble'], start, long_end, zone)
         if key in ('tokyo_minato', 'takamatsu'):
             city['pollen'] = extract_pollen(root['sources'][f'{key}/pollen'], start, audit_hourly, root['sources']['pollen/publication_config'])
         core_checks.append(check['ready'] and previous_pressure['ready'] and interval_check['ready'])
@@ -954,6 +954,22 @@ def collect(day, out):
             ens_mean = city.get('temperature_ensemble', {}).get('mean_hourly')
             city['chart_hourly'] = combined_temperature(long_ifs, extended, ens_mean)
             city['ec46_daily'] = extract_ec46_daily(root['sources'][f'{key}/ec46_members'], zone)
+            # Member-extrema overrides for the chart: on ensemble-sourced days
+            # the plotted high / night low is the mean of the members' own
+            # daily extrema, never an extremum of the ensemble-mean series
+            # (biased at every lead: ~0.2 °C on IFS ENS, worse further out).
+            mext = {}
+            for ds, v in ((city.get('temperature_ensemble') or {}).get('daily') or {}).items():
+                if v.get('temp_high_member_mean') is not None or v.get('temp_nightlow_member_mean') is not None:
+                    mext[ds] = {'high': v.get('temp_high_member_mean'),
+                                'night_low': v.get('temp_nightlow_member_mean'),
+                                'source': 'ifs_ens', 'members': v.get('members')}
+            for ds, v in (city.get('ec46_daily') or {}).items():
+                if v.get('temp_high_member_mean') is not None or v.get('temp_nightlow_member_mean') is not None:
+                    mext[ds] = {'high': v.get('temp_high_member_mean'),
+                                'night_low': v.get('temp_nightlow_member_mean'),
+                                'source': 'ec46', 'members': v.get('temp_members')}
+            city['member_extrema'] = mext
             city['checks']['chart_28d'] = audit_long(city['chart_hourly'], start, chart_end)
             chart_checks.append(city['checks']['chart_28d']['ready'])
         if key in ('tokyo_minato', 'takamatsu'):
