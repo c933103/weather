@@ -371,7 +371,7 @@ def ecmwf_opendata_track_check(track, now):
         if stamp not in index_cache:
             entries = {}
             try:
-                req = urllib.request.Request(base + stamp + '.index',
+                req = urllib.request.Request(base + stamp.removesuffix('.grib2') + '.index',
                                              headers={'User-Agent': 'Mozilla/5.0 (weather collector)'})
                 with urllib.request.urlopen(req, timeout=30) as response:
                     text = response.read().decode('utf-8', 'replace')
