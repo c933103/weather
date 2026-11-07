@@ -22,6 +22,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
 UTC = dt.timezone.utc
@@ -293,6 +294,8 @@ def hko_tides(source, year, start, end):
 def source_freshness(source, now, max_age_hours=36):
     data = source.get('response')
     issued = None
+    if isinstance(data, list) and data and isinstance(data[0], dict):
+        data = data[0]
     if isinstance(data, dict):
         for key in ('reportDatetime', 'updateTime', 'issueTime'):
             if data.get(key):
@@ -309,12 +312,67 @@ def source_freshness(source, now, max_age_hours=36):
             match = re.search(r"['\"]issued['\"]\s*:\s*['\"](\d{4}/\d\d/\d\d \d\d:\d\d)", data)
             if match:
                 issued = dt.datetime.strptime(match[1], '%Y/%m/%d %H:%M').replace(tzinfo=ZoneInfo('Asia/Taipei')).astimezone(UTC)
+        if issued is None and data.lstrip().startswith('<?xml'):
+            try:
+                tree = ET.fromstring(data)
+                stamp = tree.findtext('.//{*}ReportDateTime') or tree.findtext('./{*}updated')
+                if stamp:
+                    issued = parse_time(stamp)
+            except (ValueError, ET.ParseError):
+                pass
     source['issued_at_utc'] = issued.isoformat() if issued else None
     source['freshness'] = {'status': 'unverified', 'age_hours': None}
     if issued:
         age = (now-issued).total_seconds()/3600
         source['freshness'] = {'status': 'current' if -1 <= age <= max_age_hours else 'stale', 'age_hours': round(age, 2)}
     return source
+
+
+def warning_feed_entries(text):
+    try:
+        tree = ET.fromstring(text)
+    except (ET.ParseError, TypeError):
+        return []
+    entries = []
+    for item in tree.findall('./{*}entry'):
+        title = item.findtext('./{*}title', '')
+        content = item.findtext('./{*}content', '')
+        if '警報' not in title or not any(v in content for v in ('東京都', '香川県')):
+            continue
+        for link in item.findall('./{*}link'):
+            url = link.attrib.get('href', '')
+            if re.fullmatch(r'https://www\.data\.jma\.go\.jp/developer/xml/data/[A-Za-z0-9_]+\.xml', url):
+                entries.append({'title': title, 'content': content,
+                                'updated': item.findtext('./{*}updated'), 'url': url})
+    return entries
+
+
+def compact_official(sources):
+    """Keep report evidence small; complete pages remain in the raw artifact."""
+    result = {}
+    for name, source in sources.items():
+        if name.split('/')[0] in CITIES:
+            continue
+        normalized = dict(source)
+        if name in ('jma/dust', 'cwa/tide_page', 'cwa/tamsui_tides'):
+            normalized['response'] = None
+            normalized['response_note'] = 'Full page retained in the raw artifact. Parsed CWA tide events are in taipei.json. JMA map HTML alone is not dust forecast data.'
+        elif name == 'jma/warning_feed':
+            normalized['response'] = {'entries': warning_feed_entries(source.get('response'))[:30]}
+        elif name.endswith('_warning_xml') and isinstance(source.get('response'), str):
+            try:
+                tree = ET.fromstring(source['response'])
+                codes = ('1310300', '130010', '130000') if '/tokyo_' in name else ('3720100', '370010', '370000')
+                normalized['response'] = {
+                    'head_xml': ET.tostring(tree.find('./{*}Head'), encoding='unicode'),
+                    'applicable_items_xml': [ET.tostring(item, encoding='unicode') for item in tree.findall('.//{*}Item')
+                                             if item.findtext('./{*}Area/{*}Code') in codes],
+                    'note': 'Full original XML retained in the raw artifact; city/region warning items retained here.',
+                }
+            except (ET.ParseError, TypeError):
+                normalized['response_note'] = 'XML normalization failed; use the raw artifact.'
+        result[name] = normalized
+    return result
 
 
 def jma_hourly_tides(source, year, start, end, station):
@@ -509,6 +567,12 @@ def collect(day, out):
             root['sources'][name] = source_freshness(source, now, 24*35 if '27_day' in name else 36)
             print(json.dumps({'source': name, 'http': source.get('http_status'),
                               'ok': source['ok'], 'freshness': source.get('freshness')}), flush=True)
+    # A live official Atom feed is an independent fallback for stale bosai JSON.
+    entries = warning_feed_entries(root['sources']['jma/warning_feed'].get('response'))
+    for region, label in [('tokyo', '東京都'), ('kagawa', '香川県')]:
+        match = next((item for item in entries if label in item['content'] and 'VPWW53' in item['url']), None)
+        if match:
+            root['sources'][f'jma/{region}_warning_xml'] = source_freshness(request(match['url']), now)
     core_checks = []
     air_checks = []
     chart_checks = []
@@ -588,7 +652,7 @@ def collect(day, out):
         file.write_text(json.dumps(city, ensure_ascii=False, separators=(',', ':'), allow_nan=False), encoding='utf-8')
         files[key] = {'path': f'latest/{key}.json', 'bytes': file.stat().st_size,
                       'sha256': hashlib.sha256(file.read_bytes()).hexdigest()}
-    official = {name: source for name, source in root['sources'].items() if '/' in name and name.split('/')[0] not in CITIES}
+    official = compact_official(root['sources'])
     # Raw JMA/CWA pages and SWPC bulletins remain source material, never instructions.
     file = latest / 'official.json'
     file.write_text(json.dumps(official, ensure_ascii=False, separators=(',', ':'), allow_nan=False), encoding='utf-8')
