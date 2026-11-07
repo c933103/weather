@@ -191,7 +191,7 @@ def forecast_result(source, model, lat, lon):
 
 
 def combined_temperature(ifs, extended, ens_mean=None):
-    """Reliability cascade for the 384-hour chart series.
+    """Reliability cascade for the 28-day chart series.
 
     Most reliable source first: ECMWF IFS 9km deterministic while it lasts,
     then the ECMWF IFS ensemble mean, then the EC46 ensemble mean — each tier
@@ -713,7 +713,7 @@ def build_jobs(day):
             jobs[f'{key}/ec46'] = ('https://seasonal-api.open-meteo.com/v1/seasonal', {
                 **coord, 'models': 'ecmwf_ec46_ensemble_mean',
                 'hourly': 'temperature_2m,weather_code,temperature_2m_min,temperature_2m_max',
-                'forecast_days': 19}, True)
+                'forecast_days': 31}, True)
         # Provisional grids are raw evidence, never validated urban flood forecasts.
         jobs[f'{key}/glofas_unvalidated'] = ('https://flood-api.open-meteo.com/v1/flood', {
             'latitude': lat, 'longitude': lon, 'daily': 'river_discharge,river_discharge_mean,river_discharge_max,river_discharge_p25,river_discharge_p75',
@@ -808,13 +808,14 @@ def collect(day, out):
     start = dt.datetime.combine(day, dt.time(6), JST).astimezone(UTC)
     end = start+dt.timedelta(hours=24)
     long_end = start+dt.timedelta(hours=384)
+    chart_end = start+dt.timedelta(days=28)
     root = {'schema': 'east_asia_weather_raw_v3', 'phase': 'collection',
             'target_date_jst': day.isoformat(), 'collection_utc': now.isoformat(),
             'window_start_utc': start.isoformat(), 'window_end_utc': end.isoformat(),
-            'long_end_utc': long_end.isoformat(), 'cities': {}, 'sources': {},
+            'long_end_utc': long_end.isoformat(), 'chart_end_utc': chart_end.isoformat(), 'cities': {}, 'sources': {},
             'collector_commit': os.getenv('GITHUB_SHA'), 'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
             'quality': {'ready': False, 'core_24h_ready': False, 'air_24h_ready': False,
-                        'chart_384h_ready': False, 'reasons': []}}
+                        'chart_28d_ready': False, 'reasons': []}}
     jobs = build_jobs(day)
     with tempfile.TemporaryDirectory(prefix='weather-coastal-') as coastal_cache, futures.ThreadPoolExecutor(max_workers=8) as pool:
         coastal_future = pool.submit(collect_coastal, start, end, now, coastal_cache)
@@ -939,8 +940,8 @@ def collect(day, out):
             long_ifs = forecast_result(root['sources'][f'{key}/ifs_long'], 'ecmwf_ifs_9km', lat, lon)
             ens_mean = city.get('temperature_ensemble', {}).get('mean_hourly')
             city['chart_hourly'] = combined_temperature(long_ifs, extended, ens_mean)
-            city['checks']['chart_384h'] = audit_long(city['chart_hourly'], start, long_end)
-            chart_checks.append(city['checks']['chart_384h']['ready'])
+            city['checks']['chart_28d'] = audit_long(city['chart_hourly'], start, chart_end)
+            chart_checks.append(city['checks']['chart_28d']['ready'])
         if key in ('tokyo_minato', 'takamatsu'):
             parts = [jma_hourly_tides(root['sources'][f'{key}/hourly_tide_{year}'], year, start, end,
                      'Tokyo (Harumi)' if key == 'tokyo_minato' else 'Takamatsu') for year in {day.year, (day+dt.timedelta(days=1)).year}]
@@ -978,7 +979,7 @@ def collect(day, out):
     q['core_24h_ready'] = all(core_checks)
     q['air_24h_ready'] = all(air_checks)
     q['gfs_24h_ready'] = all(gfs_checks)
-    q['chart_384h_ready'] = len(chart_checks) == 2 and all(chart_checks)
+    q['chart_28d_ready'] = len(chart_checks) == 2 and all(chart_checks)
     q['official_tides_ready'] = all(c['astronomical_tide']['ready'] for c in root['cities'].values())
     q['all_city_hourly_tides_ready'] = all(len(c['astronomical_tide'].get('time', [])) == 24 or c['astronomical_tide'].get('hourly_reference', {}).get('ready') is True for c in root['cities'].values())
     q['solar_3day_ready'] = root['sources']['swpc/three_day']['ok'] and root['sources']['swpc/three_day']['freshness']['status'] == 'current'
@@ -1003,7 +1004,7 @@ def collect(day, out):
             q['reasons'].append(f'{name}: request failed ({source.get("http_status")})')
         elif source.get('freshness', {}).get('status') == 'stale':
             q['reasons'].append(f'{name}: stale official issue timestamp; not current warning evidence')
-    for gate in ('core_24h_ready', 'air_24h_ready', 'chart_384h_ready', 'official_tides_ready', 'all_city_hourly_tides_ready', 'solar_3day_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready'):
+    for gate in ('core_24h_ready', 'air_24h_ready', 'chart_28d_ready', 'official_tides_ready', 'all_city_hourly_tides_ready', 'solar_3day_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready'):
         if not q[gate]:
             q['reasons'].append(f'{gate}: failed')
     q['ready'] = not q['reasons']
@@ -1034,7 +1035,7 @@ def collect(day, out):
     files['regional'] = {'path': 'latest/regional.json', 'bytes': file.stat().st_size,
                          'sha256': hashlib.sha256(file.read_bytes()).hexdigest()}
     manifest = {k: root[k] for k in ('schema', 'target_date_jst', 'collection_utc', 'window_start_utc',
-               'window_end_utc', 'long_end_utc', 'collector_commit', 'workflow_run_id', 'quality')}
+               'window_end_utc', 'long_end_utc', 'chart_end_utc', 'collector_commit', 'workflow_run_id', 'quality')}
     manifest['files'] = files
     manifest['raw_artifact'] = {'name': f'weather-raw-{os.getenv("GITHUB_RUN_ID", day.isoformat())}', 'filename': raw_path.name,
                                 'bytes': raw_path.stat().st_size,
@@ -1055,7 +1056,7 @@ def main():
     root = collect(day, args.out_dir)
     # Missing core numerical inputs are operational failure, but files are still
     # published by the workflow so the 06:00 report can explain the exact gaps.
-    gates = ('core_24h_ready', 'air_24h_ready', 'chart_384h_ready', 'all_city_hourly_tides_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready')
+    gates = ('core_24h_ready', 'air_24h_ready', 'chart_28d_ready', 'all_city_hourly_tides_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready')
     return 0 if all(root['quality'].get(k) for k in gates) else 2
 
 

@@ -64,7 +64,7 @@ def main():
     manifest = json.loads(get_bytes(base+'latest/manifest.json'))
     validate_manifest(manifest, args.target_date_jst, dt.datetime.now(UTC), args.max_age_hours)
     bundle = {k: manifest[k] for k in ('schema', 'target_date_jst', 'collection_utc', 'window_start_utc',
-              'window_end_utc', 'long_end_utc', 'collector_commit', 'workflow_run_id', 'quality')}
+              'window_end_utc', 'long_end_utc', 'chart_end_utc', 'collector_commit', 'workflow_run_id', 'quality')}
     bundle.update(data_commit=commit, loaded_at_utc=iso_now(), cities={}, sources={})
     def read_entry(key, entry):
         if not re.fullmatch(r'latest/[a-z_]+\.json', entry['path']):

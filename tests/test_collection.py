@@ -34,10 +34,10 @@ class CoverageTests(unittest.TestCase):
         for bad in (math.nan, math.inf, True, '20', None):
             self.assertFalse(numeric(bad))
 
-    def test_384_hours_needs_both_boundaries(self):
-        stop = self.start + dt.timedelta(hours=384)
-        hr = {'time': [(self.start + dt.timedelta(hours=i)).isoformat() for i in range(0, 385, 6)],
-              'temperature_2m': [20] * 65}
+    def test_28_days_needs_both_boundaries(self):
+        stop = self.start + dt.timedelta(days=28)
+        hr = {'time': [(self.start + dt.timedelta(hours=i)).isoformat() for i in range(0, 673, 6)],
+              'temperature_2m': [20] * 113}
         self.assertTrue(audit_long(hr, self.start, stop)['ready'])
         hr['time'].pop(); hr['temperature_2m'].pop()
         self.assertFalse(audit_long(hr, self.start, stop)['ready'])

@@ -89,7 +89,7 @@ def enough_coverage(points, start, end):
     return True,valid
 
 
-def extrema_by_date(points, day0, site_tz, max_days=16):
+def extrema_by_date(points, day0, site_tz, max_days=28):
     # All extrema windows are *local* calendar day/noon windows. Their graphical
     # positions are slot indices regardless of their actual forecast hour.
     highs={}; night_lows={}
@@ -118,7 +118,7 @@ def extrema_runs(highs,lows):
     dropped it, leaving the chart short of t+384.
     """
     pts=[]
-    for i in range(16):
+    for i in sorted(set(highs)|set(lows)):
         if i in highs:pts.append((float(i),highs[i],'high'))
         if i in lows:pts.append((i+.5,lows[i],'low'))
     pts.sort()
@@ -196,7 +196,7 @@ def cascade_segments(row,tz,day0=None):
     for t,m in zip(ts,models):
         if not m:continue
         d=parse_utc(t).astimezone(tz).date()
-        if day0 is not None and not (day0<=d<=day0+timedelta(days=16)):
+        if day0 is not None and not (day0<=d<=day0+timedelta(days=28)):
             continue
         if segments and segments[-1][0]==m:
             segments[-1]=(m,segments[-1][1],d)
@@ -267,9 +267,9 @@ def paste_emojis(png_path, slots, font_path):
         if not bbox:
             continue
         glyph = tile.crop(bbox)
-        scale = 54 / glyph.height
-        glyph = glyph.resize((max(1, round(glyph.width * scale)), 54), Image.LANCZOS)
-        cx = fx * img.width - 26
+        scale = 46 / glyph.height
+        glyph = glyph.resize((max(1, round(glyph.width * scale)), 46), Image.LANCZOS)
+        cx = fx * img.width - 22
         cy = (1 - fy) * img.height
         img.alpha_composite(glyph, (int(cx - glyph.width / 2), int(cy - glyph.height / 2)))
         pasted += 1
@@ -280,7 +280,7 @@ def paste_emojis(png_path, slots, font_path):
 def render(raw,target_day,out_path):
     d0=date.fromisoformat(target_day)
     plt.rcParams.update({'font.family':['Noto Sans CJK JP','Noto Sans Symbols2','DejaVu Sans'],'axes.unicode_minus':False})
-    fig=plt.figure(figsize=(14.2,7.2),dpi=170)
+    fig=plt.figure(figsize=(20,7.2),dpi=170)
     left=.125; width=.845
     ax=fig.add_axes([left,.27,width,.60])
     colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -299,10 +299,10 @@ def render(raw,target_day,out_path):
         raws[city]=(raw.get('cities') or {}).get(city,{})
     if not total:raise RuntimeError('No verified consecutive day-high / noon-to-noon night-low windows to plot.')
     bmin=math.floor(min(bounds)-2);bmax=math.ceil(max(bounds)+2)
-    ax.set_xlim(-.08,16.0);ax.set_ylim(bmin,bmax)
+    ax.set_xlim(-.08,28.0);ax.set_ylim(bmin,bmax)
     ax.set_ylabel('気温（℃）',fontsize=11.5)
-    ax.set_xticks(range(17))
-    ax.set_xticklabels([(d0+timedelta(days=i)).strftime('%m/%d') for i in range(17)],fontsize=11)
+    ax.set_xticks(range(28))
+    ax.set_xticklabels([(d0+timedelta(days=i)).strftime('%m/%d') for i in range(28)],fontsize=11)
     ax.set_yticks(np.arange(math.ceil(bmin/5)*5,bmax+1,5))
     ax.set_yticks(np.arange(bmin,bmax+1,1),minor=True)
     ax.grid(axis='y',which='minor',alpha=.11,lw=.5)
@@ -312,7 +312,7 @@ def render(raw,target_day,out_path):
     ax.tick_params(length=0,axis='x',pad=8)
     ax.tick_params(axis='y',labelsize=10.5)
     ax.legend(loc='upper right',frameon=False,ncol=2,fontsize=11)
-    fig.text(left,.947,'香港・東京都港区｜384時間気温予報',fontsize=20,weight='bold')
+    fig.text(left,.947,'香港・東京都港区｜28日間気温予報',fontsize=20,weight='bold')
     fig.text(left,.908,'実線：日中最高（当日）／破線：夜間最低（日付間・当日正午～翌日正午の最低）｜淡色＝高低の連続帯',fontsize=10.8)
     fig.text(left,.882,'日付位置は時刻を示さない。下段の自信度はIFSアンサンブルの日最高気温の拡散より。気温の接続順は下部のデータ源注記参照。',fontsize=9.6,color='#595959')
     emoji_font=find_emoji_font()
@@ -327,19 +327,23 @@ def render(raw,target_day,out_path):
         grades={}
         try:
             from compute import chart_confidence_for_city
-            grades=chart_confidence_for_city(src,d0)
+            grades=chart_confidence_for_city(src,d0,days=28)
         except Exception:
             grades={}
-        for i in range(16):
+        for i in range(28):
             dd=d0+timedelta(days=i)
             cc=daily_icon(src,dd,SITES[city][1])
             grade=(grades.get(dd.isoformat()) or {}).get('grade')
-            cx=left+width*(i/16)
-            if emoji_font:
+            cx=left+width*(i/28)
+            if emoji_font and cc!='―':
                 # Colour emoji are composited onto the PNG afterwards; here
                 # only the grade text is drawn, right of the emoji slot.
                 icon_slots.append((cx,y,cc))
-                fig.text(cx+.005,y,f'/{grade}' if grade else '/未評価',fontsize=11.5,ha='left',va='center')
+                fig.text(cx+.005,y,f'/{grade}' if grade else '/未評価',fontsize=10.5,ha='left',va='center')
+            elif emoji_font:
+                # No weather code for this day in the bundle: show the
+                # explicit no-data marker as text instead of a blank slot.
+                fig.text(cx,y,f'―/{grade}' if grade else '―/未評価',fontsize=10.5,ha='center',va='center')
             else:
                 val=f'{cc}/{grade}' if grade else f'{cc}/未評価'
                 fig.text(cx,y,val,fontsize=10,ha='center',va='center')
