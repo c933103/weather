@@ -126,6 +126,14 @@ notes, cyclone section and chart rows are fixed formats):
   (Taipei) products are in the official bundle; the CWA county forecast
   (F-C0032-001 for 臺北市) is fetched whenever the optional `CWA_API_KEY`
   secret is configured, like the CWA tide API.
+- **Cyclone-product alternatives**: the ECMWF OpenCharts cyclone probe walks
+  back through recent base times until one answers. For every JTWC warning,
+  the collector also samples two independent routes along the warning track —
+  NOAA GFS MSLP/wind (`gfs/cyclone_check_*`) and ECMWF open-data IFS via
+  per-step index byte ranges and eccodes decoding
+  (`ecmwf_opendata/cyclone_check_*`) — surfaced in
+  `calculated.cyclone_watch.track_checks`. A failed retrieval is always
+  answered by another route before anything is treated as missing.
 - **Space weather**: `calculated.json` carries a `space_weather` digest parsed
   from the SWPC products already collected (alert product ids, highest G-scale
   and Kp in the outlooks, and an `extreme` flag at warning level or G2+), so

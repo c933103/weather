@@ -131,26 +131,44 @@ def split_segments(highs,lows):
 
 
 def draw_city(ax,highs,lows,color,name):
-    # Single solid temperature waveform in alternating sequence.
-    # Semi-transparent high/low envelope is behind it, with no visible boundary lines.
+    # Two-line design (the user's settled chart style): a SOLID line through
+    # the day highs at the date positions and a DASHED line through the
+    # night lows half a day later (each low is the local noon-to-noon
+    # minimum), with the semi-transparent high/low envelope behind them.
     drawn=0
     for seg in split_segments(highs,lows):
         x=np.array([p[0] for p in seg]);y=np.array([p[1] for p in seg])
-        sample=np.linspace(x[0],x[-1],max(100,round((x[-1]-x[0])*90)))
-        waveform=PchipInterpolator(x,y,extrapolate=False)(sample)
-        ax.plot(sample,waveform,lw=2.2,color=color,solid_capstyle='round',zorder=4,
-                label=name if drawn==0 else '_nolegend_')
-        drawn+=1
-        # Envelopes are interpolated separately, but intentionally not drawn as lines.
+        hpts=[(px,py) for px,py in seg if float(px).is_integer()]
+        lpts=[(px,py) for px,py in seg if not float(px).is_integer()]
+        # Envelope between the interpolated high and low curves.
         hxs=np.array([k for k in sorted(highs) if x[0]<=k<=x[-1]],dtype=float)
         lxs=np.array([k+.5 for k in sorted(lows) if x[0]<=k+.5<=x[-1]],dtype=float)
-        if len(hxs)<2 or len(lxs)<2:continue
-        xx=np.linspace(max(hxs[0],lxs[0]),min(hxs[-1],lxs[-1]),max(50,len(sample)))
-        if len(xx)==0 or xx[-1]<=xx[0]:continue
-        upper=PchipInterpolator(hxs,np.array([highs[int(v)] for v in hxs]),extrapolate=False)(xx)
-        lower=PchipInterpolator(lxs,np.array([lows[int(v-.5)] for v in lxs]),extrapolate=False)(xx)
-        allowed=np.isfinite(upper)&np.isfinite(lower)&(upper>=lower)
-        ax.fill_between(xx,lower,upper,where=allowed,alpha=.13,color=color,zorder=1,linewidth=0)
+        if len(hxs)>=2 and len(lxs)>=2:
+            xx=np.linspace(max(hxs[0],lxs[0]),min(hxs[-1],lxs[-1]),200)
+            if len(xx) and xx[-1]>xx[0]:
+                upper=PchipInterpolator(hxs,np.array([highs[int(v)] for v in hxs]),extrapolate=False)(xx)
+                lower=PchipInterpolator(lxs,np.array([lows[int(v-.5)] for v in lxs]),extrapolate=False)(xx)
+                allowed=np.isfinite(upper)&np.isfinite(lower)&(upper>=lower)
+                ax.fill_between(xx,lower,upper,where=allowed,alpha=.13,color=color,zorder=1,linewidth=0)
+        def smooth(pts):
+            if len(pts)<2:
+                return None
+            px=np.array([p[0] for p in pts]);py=np.array([p[1] for p in pts])
+            sample=np.linspace(px[0],px[-1],max(60,round((px[-1]-px[0])*60)))
+            return sample,PchipInterpolator(px,py,extrapolate=False)(sample)
+        hs=smooth(hpts)
+        if hs:
+            ax.plot(hs[0],hs[1],lw=2.4,color=color,solid_capstyle='round',zorder=4,
+                    label=name if drawn==0 else '_nolegend_')
+        if hpts:
+            ax.plot([p[0] for p in hpts],[p[1] for p in hpts],'o',ms=3.4,color=color,zorder=5)
+        ls=smooth(lpts)
+        if ls:
+            ax.plot(ls[0],ls[1],lw=1.9,color=color,ls=(0,(4,2)),dash_capstyle='round',
+                    zorder=4,label='_nolegend_')
+        if lpts:
+            ax.plot([p[0] for p in lpts],[p[1] for p in lpts],'o',ms=2.8,color=color,zorder=5,alpha=.9)
+        drawn+=1
     return drawn
 
 
@@ -246,7 +264,7 @@ def render(raw,target_day,out_path):
     ax.set_xlim(-.08,16.0);ax.set_ylim(bmin,bmax)
     ax.set_ylabel('気温（℃）',fontsize=9)
     ax.set_xticks(range(17))
-    ax.set_xticklabels([(d0+timedelta(days=i)).strftime('%m/%d') for i in range(17)],fontsize=7.5)
+    ax.set_xticklabels([(d0+timedelta(days=i)).strftime('%m/%d') for i in range(17)],fontsize=8.5)
     ax.set_yticks(np.arange(math.ceil(bmin/5)*5,bmax+1,5))
     ax.set_yticks(np.arange(bmin,bmax+1,1),minor=True)
     ax.grid(axis='y',which='minor',alpha=.11,lw=.5)
@@ -257,8 +275,8 @@ def render(raw,target_day,out_path):
     ax.tick_params(axis='y',labelsize=8)
     ax.legend(loc='upper right',frameon=False,ncol=2,fontsize=9)
     fig.text(left,.94,'香港・東京都港区｜384時間気温予報',fontsize=16,weight='bold')
-    fig.text(left,.905,'日中最高は当日、夜間最低は日付間（当日正午～翌日正午の最低）｜淡色＝高低の連続帯',fontsize=8.7)
-    fig.text(left,.885,'日付位置は時刻を示さない。IFS 9kmの先はEC46 36km・6時間刻みのアンサンブル平均（未補正）。下段の自信度はIFSアンサンブルの日最高気温の拡散より。',fontsize=7.8,color='#666666')
+    fig.text(left,.905,'実線：日中最高（当日）／破線：夜間最低（日付間・当日正午～翌日正午の最低）｜淡色＝高低の連続帯',fontsize=8.7)
+    fig.text(left,.885,'日付位置は時刻を示さない。下段の自信度はIFSアンサンブルの日最高気温の拡散より。気温の接続順は下部のデータ源注記参照。',fontsize=7.8,color='#666666')
     for row,city in enumerate(('Tokyo Minato Ward','Hong Kong')):
         y=.16-row*.055
         fig.text(.024,y,SITES[city][0],fontsize=8.5,weight='bold',va='center')
@@ -277,7 +295,7 @@ def render(raw,target_day,out_path):
             cc=daily_icon(src,dd,SITES[city][1])
             grade=(grades.get(dd.isoformat()) or {}).get('grade')
             val=f'{cc}/{grade}' if grade else f'{cc}/未評価'
-            fig.text(left+width*(i/16),y,val,fontsize=7.3,ha='center',va='center')
+            fig.text(left+width*(i/16),y,val,fontsize=7.8,ha='center',va='center')
     note=cascade_note(raws,d0)
     if note:
         fig.text(left,.068,note,fontsize=7.8,color='#555555')

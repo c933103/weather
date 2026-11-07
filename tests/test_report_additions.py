@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from collect import combined_temperature, jtwc_system_ids
+from collect import combined_temperature, jtwc_system_ids, parse_warning_track
 from compute import (chart_confidence_for_city, compass16, frost_agreement,
                      grade_from_spread, hazard_flags, parse_jtwc_abpw,
                      parse_space_weather)
@@ -158,6 +158,38 @@ class CascadeTests(unittest.TestCase):
         mean = block['mean_hourly']
         self.assertEqual(len(mean['time']), 72)
         self.assertAlmostEqual(mean['temperature_2m'][0], 20.0 + 0.0, delta=1.0)
+
+
+WARNING_SAMPLE = """WTPN31 PGTW 070900
+SUBJ/TROPICAL STORM 31W (CEMPAKA) WARNING NR 005//
+   WARNING POSITION:
+   070600Z --- NEAR 20.0N 142.8E
+   MAX SUSTAINED WINDS - 045 KT, GUSTS 055 KT
+   FORECASTS:
+   12 HRS, VALID AT:
+   071800Z --- 21.2N 140.1E
+   MAX SUSTAINED WINDS - 060 KT, GUSTS 075 KT
+   24 HRS, VALID AT:
+   080600Z --- 22.2N 137.3E
+   MAX SUSTAINED WINDS - 075 KT, GUSTS 090 KT
+   72 HRS, VALID AT:
+   100600Z --- 25.1N 138.6E
+   MAX SUSTAINED WINDS - 085 KT, GUSTS 105 KT
+"""
+
+
+class WarningTrackTests(unittest.TestCase):
+    def test_parse(self):
+        now = dt.datetime(2026, 11, 7, 12, tzinfo=dt.timezone.utc)
+        track = parse_warning_track(WARNING_SAMPLE, now)
+        self.assertEqual([p['tau_h'] for p in track], [0, 12, 24, 72])
+        self.assertEqual((track[0]['latitude'], track[0]['longitude']), (20.0, 142.8))
+        self.assertEqual(track[-1]['valid_utc'], '2026-11-10T06:00:00+00:00')
+        self.assertEqual((track[-1]['latitude'], track[-1]['longitude']), (25.1, 138.6))
+
+    def test_non_text(self):
+        now = dt.datetime(2026, 11, 7, 12, tzinfo=dt.timezone.utc)
+        self.assertEqual(parse_warning_track(None, now), [])
 
 
 class SpaceWeatherTests(unittest.TestCase):

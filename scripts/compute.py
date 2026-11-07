@@ -348,6 +348,12 @@ def compute_bundle(raw):
     if isinstance(ecmwf_response, str):
         ecmwf_response = ecmwf_response[:2000]
     warning_names = sorted(n for n in sources if n.startswith('jtwc/warning_'))
+    track_checks = {}
+    for prefix in ('gfs/cyclone_check_', 'ecmwf_opendata/cyclone_check_'):
+        for name, source in sources.items():
+            if name.startswith(prefix):
+                body = source.get('response') or {}
+                track_checks[name] = {'ok': source.get('ok'), 'samples': body.get('samples')}
     cyclone_watch = {
         **parse_jtwc_abpw(sources.get('jtwc/outlook', {}).get('response')),
         'warning_sources': warning_names,
@@ -355,11 +361,19 @@ def compute_bundle(raw):
         'ecmwf_cyclone_product': {'ok': ecmwf_probe.get('ok'),
                                   'http_status': ecmwf_probe.get('http_status'),
                                   'fetched_at_utc': ecmwf_probe.get('fetched_at_utc'),
-                                  'response': ecmwf_response},
+                                  'base_time_used': ecmwf_response.get('base_time_used')
+                                      if isinstance(ecmwf_response, dict) else None,
+                                  'attempts': ecmwf_response.get('attempts')
+                                      if isinstance(ecmwf_response, dict) else None,
+                                  'response': ecmwf_response.get('product')
+                                      if isinstance(ecmwf_response, dict) else ecmwf_response},
+        'track_checks': track_checks,
         'note': 'ABPW digest covers the advisory valid time; forecast tracks are in the '
                 'jtwc/warning_* source texts. The ECMWF entry is the OpenCharts cyclone '
-                'product probe result, retained verbatim (data or the API\'s own '
-                'availability error); it never silently replaces JTWC warnings.'}
+                'product probe (base-time walk-back; data or the API\'s own availability '
+                'error, retained in the official bundle); GFS and ECMWF open-data track '
+                'samples are the alternative routes when the product cannot be obtained. '
+                'None of them silently replaces JTWC warnings.'}
     day0 = dt.date.fromisoformat(raw['target_date_jst'])
     chart_confidence = {}
     for key in ('hong_kong', 'tokyo_minato'):

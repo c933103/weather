@@ -234,6 +234,190 @@ def combined_temperature(ifs, extended, ens_mean=None):
                          'sample keeps its source model; nothing is extrapolated.'}
 
 
+_WARNING_POS = re.compile(
+    r'(?:WARNING POSITION:|(\d+)\s*HRS, VALID AT:)\s*(\d{2})(\d{2})(\d{2})Z\s*---\s*(?:NEAR\s+)?'
+    r'(\d+\.\d)([NS])\s+(\d+\.\d)([EW])')
+
+
+def parse_warning_track(text, now):
+    """JTWC warning positions: the analysis point plus forecast points.
+
+    Each entry carries its TAU and its valid time; the DDHHMM stamps are
+    resolved to the month nearest the collection time.
+    """
+    if not isinstance(text, str):
+        return []
+    track = []
+    for match in _WARNING_POS.finditer(text):
+        tau = int(match.group(1)) if match.group(1) else 0
+        day, hour, minute = int(match.group(2)), int(match.group(3)), int(match.group(4))
+        lat = float(match.group(5)) * (1 if match.group(6) == 'N' else -1)
+        lon = float(match.group(7)) * (1 if match.group(8) == 'E' else -1)
+        best = None
+        for delta in (-1, 0, 1):
+            year = now.year + (now.month - 1 + delta) // 12
+            month = (now.month - 1 + delta) % 12 + 1
+            try:
+                valid = dt.datetime(year, month, day, hour, minute, tzinfo=UTC)
+            except ValueError:
+                continue
+            if best is None or abs(valid - now) < abs(best - now):
+                best = valid
+        if best is not None:
+            track.append({'tau_h': tau, 'valid_utc': best.isoformat(),
+                          'latitude': lat, 'longitude': lon})
+    return track
+
+
+def _nearest_hour_value(hourly, field, valid):
+    best = None
+    for stamp_text, value in zip(hourly.get('time', []), hourly.get(field, [])):
+        if not isinstance(value, (int, float)):
+            continue
+        try:
+            stamp = parse_time(stamp_text)
+        except (TypeError, ValueError):
+            continue
+        gap = abs(stamp - valid)
+        if best is None or gap < best[0]:
+            best = (gap, value)
+    return best[1] if best and best[0] <= dt.timedelta(hours=2) else None
+
+
+def gfs_track_check(track):
+    """Independent-model check: GFS MSLP/10 m wind along the JTWC track.
+
+    This is the standing alternative when the ECMWF cyclone product cannot
+    be obtained: a second model's low-level field sampled at the warning
+    positions and valid times. It is a coherence check, not a track.
+    """
+    points = [p for p in track if p['tau_h'] in (0, 24, 48, 72)]
+    if not points:
+        return {'ok': False, 'http_status': None, 'response': None,
+                'error': {'code': 'NO_TRACK_POINTS', 'message': 'warning text carried no usable positions'}}
+    params = {'latitude': ','.join(str(p['latitude']) for p in points),
+              'longitude': ','.join(str(p['longitude']) for p in points),
+              'hourly': 'pressure_msl,wind_speed_10m', 'models': 'gfs_seamless',
+              'forecast_days': 5, 'past_days': 1, 'timezone': 'GMT', 'wind_speed_unit': 'ms'}
+    url = 'https://api.open-meteo.com/v1/forecast?' + urllib.parse.urlencode(params)
+    source = request(url)
+    if not source['ok'] or not isinstance(source.get('response'), list):
+        return {'ok': False, 'http_status': source.get('http_status'), 'response': None,
+                'fetched_at_utc': iso_now(), 'url': url,
+                'error': source.get('error') or {'code': 'GFS_CHECK_FAILED', 'message': 'no per-location response'}}
+    samples = []
+    for point, location in zip(points, source['response']):
+        hourly = location.get('hourly', {}) if isinstance(location, dict) else {}
+        valid = parse_time(point['valid_utc'])
+        pressure = _nearest_hour_value(hourly, 'pressure_msl', valid)
+        wind = _nearest_hour_value(hourly, 'wind_speed_10m', valid)
+        samples.append({**point, 'gfs_pressure_msl_hpa': pressure,
+                        'gfs_wind_10m_kt': round(wind * 1.94384, 1) if wind is not None else None})
+    return {'ok': any(s['gfs_pressure_msl_hpa'] is not None for s in samples),
+            'http_status': source.get('http_status'), 'fetched_at_utc': iso_now(), 'url': url,
+            'response': {'model': 'noaa_gfs_seamless', 'samples': samples,
+                         'method': 'GFS hourly MSLP and 10 m wind sampled at the JTWC warning-track '
+                                   'positions and valid times; an independent-model coherence '
+                                   'check, not a track forecast.'},
+            'error': None}
+
+
+def _range_get(url, offset, length):
+    req = urllib.request.Request(url, headers={
+        'User-Agent': 'Mozilla/5.0 (weather collector)',
+        'Range': f'bytes={offset}-{offset + length - 1}'})
+    with urllib.request.urlopen(req, timeout=60) as response:
+        return response.read()
+
+
+def _grib_nearest(data, lat, lon):
+    """Nearest-gridpoint value from one GRIB2 message (repo eccodes idiom)."""
+    import eccodes as ec
+    with tempfile.NamedTemporaryFile(suffix='.grib2', delete=True) as tmp:
+        tmp.write(data)
+        tmp.flush()
+        with open(tmp.name, 'rb') as stream:
+            handle = ec.codes_grib_new_from_file(stream)
+            if handle is None:
+                return None
+            try:
+                found = ec.codes_grib_find_nearest(handle, lat, lon, npoints=1)
+                return found[0]['value'] if found else None
+            finally:
+                ec.codes_release(handle)
+
+
+def ecmwf_opendata_track_check(track, now):
+    """Alternative ECMWF route inside the workflow: ECMWF open data.
+
+    When the OpenCharts cyclone product cannot be obtained, sample the IFS
+    open-data (0.4°) MSLP and 10 m wind at the JTWC track points via the
+    per-step .index byte ranges — the same eccodes decoding the coastal
+    STOFS limb uses. Failure degrades to a recorded failed source.
+    """
+    points = [p for p in track if p['tau_h'] in (0, 24, 48, 72)]
+    if not points:
+        return {'ok': False, 'http_status': None, 'response': None,
+                'error': {'code': 'NO_TRACK_POINTS', 'message': 'warning text carried no usable positions'}}
+    run = (now - dt.timedelta(hours=6)).replace(minute=0, second=0, microsecond=0)
+    run = run.replace(hour=(run.hour // 12) * 12)
+    base = f'https://data.ecmwf.int/forecasts/{run:%Y%m%d}/{run:%H}z/ifs/0p4-beta/oper/'
+    index_cache = {}
+    samples = []
+    for point in points:
+        valid = parse_time(point['valid_utc'])
+        step = max(0, int(round((valid - run).total_seconds() / 10800.0)) * 3)
+        stamp = f'{run:%Y%m%d%H}0000-{step}h-oper-fc.grib2'
+        if stamp not in index_cache:
+            entries = {}
+            try:
+                req = urllib.request.Request(base + stamp + '.index',
+                                             headers={'User-Agent': 'Mozilla/5.0 (weather collector)'})
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    text = response.read().decode('utf-8', 'replace')
+                for line in text.splitlines():
+                    try:
+                        entry = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(entry, dict) and entry.get('param'):
+                        entries.setdefault(entry['param'], entry)
+            except Exception:
+                entries = {}
+            index_cache[stamp] = entries
+        entries = index_cache[stamp]
+        sample = {**point, 'run_utc': run.isoformat(), 'step_h': step,
+                  'ecmwf_pressure_msl_hpa': None, 'ecmwf_wind_10m_kt': None}
+        try:
+            msl = entries.get('msl')
+            if msl:
+                value = _grib_nearest(_range_get(base + stamp, msl['_offset'], msl['_length']),
+                                      point['latitude'], point['longitude'])
+                if value is not None:
+                    sample['ecmwf_pressure_msl_hpa'] = round(value / 100.0, 1)
+            u_entry, v_entry = entries.get('10u'), entries.get('10v')
+            if u_entry and v_entry:
+                u = _grib_nearest(_range_get(base + stamp, u_entry['_offset'], u_entry['_length']),
+                                  point['latitude'], point['longitude'])
+                v = _grib_nearest(_range_get(base + stamp, v_entry['_offset'], v_entry['_length']),
+                                  point['latitude'], point['longitude'])
+                if u is not None and v is not None:
+                    sample['ecmwf_wind_10m_kt'] = round(math.hypot(u, v) * 1.94384, 1)
+        except Exception:
+            pass
+        samples.append(sample)
+    ok = any(s['ecmwf_pressure_msl_hpa'] is not None for s in samples)
+    return {'ok': ok, 'http_status': 200 if ok else None, 'fetched_at_utc': iso_now(),
+            'url': base,
+            'response': {'model': 'ecmwf_ifs_open_data_0p4', 'samples': samples,
+                         'method': 'ECMWF open-data IFS (0.4°) MSLP and 10 m wind sampled at the '
+                                   'JTWC warning-track positions via per-step index byte ranges; '
+                                   'the in-workflow alternative when the OpenCharts cyclone '
+                                   'product is unavailable.'} if samples else None,
+            'error': None if ok else {'code': 'OPEN_DATA_UNAVAILABLE',
+                                      'message': 'no MSLP sample could be decoded from ECMWF open data'}}
+
+
 def audit_long(hourly, start, end):
     points = [(parse_time(t), v) for t, v in zip(hourly.get('time', []), hourly.get('temperature_2m', [])) if numeric(v)]
     points = sorted((t, v) for t, v in points if start-dt.timedelta(hours=6) <= t <= end+dt.timedelta(hours=6))
@@ -678,14 +862,48 @@ def collect(day, out):
             root['sources'][f'jtwc/warning_{system.lower()}'] = {'ok': False, 'http_status': None,
                 'fetched_at_utc': iso_now(), 'url': url, 'response': None,
                 'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
-    base_time = urllib.parse.quote(now.strftime('%Y-%m-%dT00:00:00Z'), safe='')
-    ecmwf_url = f'https://charts.ecmwf.int/opencharts-api/v1/products/cyclone/?base_time={base_time}'
-    try:
-        root['sources']['ecmwf/cyclone_product'] = source_freshness(request(ecmwf_url), now)
-    except Exception as exc:
-        root['sources']['ecmwf/cyclone_product'] = {'ok': False, 'http_status': None,
-            'fetched_at_utc': iso_now(), 'url': ecmwf_url, 'response': None,
-            'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
+        # Independent-model cyclone checks along this system's warning track:
+        # GFS (the standing second model) and ECMWF open data (the alternative
+        # ECMWF route) — a failed product is always answered by another route.
+        track = parse_warning_track(root['sources'][f'jtwc/warning_{system.lower()}'].get('response'), now)
+        if track:
+            for label, check_fn in (('gfs', lambda: gfs_track_check(track)),
+                                    ('ecmwf_opendata', lambda: ecmwf_opendata_track_check(track, now))):
+                key = f'{label}/cyclone_check_{system.lower()}'
+                try:
+                    root['sources'][key] = source_freshness(check_fn(), now)
+                except Exception as exc:
+                    root['sources'][key] = {'ok': False, 'http_status': None,
+                        'fetched_at_utc': iso_now(), 'url': None, 'response': None,
+                        'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
+    # ECMWF OpenCharts cyclone product: walk back through recent base times —
+    # the newest cycle is not always published yet — and retain the first
+    # success, or every attempt when none succeeds.
+    attempts = []
+    probe = None
+    seen_bases = set()
+    for hours_back in (0, 6, 12, 18, 24, 30):
+        base = (now - dt.timedelta(hours=hours_back)).replace(minute=0, second=0, microsecond=0)
+        base = base.replace(hour=(base.hour // 6) * 6)
+        base_text = base.strftime('%Y-%m-%dT%H:00:00Z')
+        if base_text in seen_bases:
+            continue
+        seen_bases.add(base_text)
+        ecmwf_url = ('https://charts.ecmwf.int/opencharts-api/v1/products/cyclone/?base_time='
+                     + urllib.parse.quote(base_text, safe=''))
+        try:
+            candidate = request(ecmwf_url)
+        except Exception as exc:
+            candidate = {'ok': False, 'http_status': None, 'response': None,
+                         'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
+        attempts.append({'base_time': base_text, 'ok': candidate['ok'],
+                         'http_status': candidate.get('http_status')})
+        probe = {**candidate, 'response': {'base_time_used': base_text if candidate['ok'] else None,
+                                           'attempts': attempts,
+                                           'product': candidate.get('response')}}
+        if candidate['ok']:
+            break
+    root['sources']['ecmwf/cyclone_product'] = source_freshness(probe, now)
     core_checks = []
     air_checks = []
     gfs_checks = []
