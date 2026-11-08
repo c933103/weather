@@ -152,15 +152,15 @@ def grade_from_spread(spread):
     return '低'
 
 
-def chart_confidence_for_city(city, day0, days=16):
-    """Per-date chart confidence grades from IFS ensemble temperature members.
+def chart_confidence_for_city(city, day0, days=16, ensemble_key='temperature_ensemble'):
+    """Per-date chart confidence grades from ensemble temperature members.
 
-    Returns {} when the city carries no temperature ensemble (older bundles),
+    Returns {} when the city carries no such ensemble (older bundles),
     so callers can fall back to an explicit 'not evaluated' marker instead of
     inventing a grade. Dates beyond the ensemble's native span are graded 低
     with basis 'outside_ensemble_coverage'.
     """
-    block = city.get('temperature_ensemble') or {}
+    block = city.get(ensemble_key) or {}
     hourly = block.get('hourly') or {}
     fields = [k for k in hourly if re.fullmatch(r'temperature_2m(?:_member\d+)?', k)]
     times = hourly.get('time') or []
@@ -187,6 +187,25 @@ def chart_confidence_for_city(city, day0, days=16):
                                        'members': len(maxima),
                                        'basis': 'outside_ensemble_coverage'}
     return result
+
+
+def _aifs_single_crosscheck(city):
+    """AIFS Single daily highs vs IFS ENS member-mean highs — agreement record.
+
+    The Single's highs come from its own (six-hourly-origin) samples, so this
+    is a coarse agreement signal between the two ECMWF model families, kept
+    in the bundle for review; it feeds no chart and no grade.
+    """
+    single = city.get('aifs_single_daily') or {}
+    ens_daily = ((city.get('temperature_ensemble') or {}).get('daily') or {})
+    diffs = []
+    for day, values in single.items():
+        ref = (ens_daily.get(day) or {}).get('temp_high_member_mean')
+        if values.get('high') is not None and ref is not None:
+            diffs.append(abs(values['high'] - ref))
+    return {'days_compared': len(diffs),
+            'mean_abs_high_difference_c': round(sum(diffs) / len(diffs), 2) if diffs else None,
+            'note': 'AIFS Single daily highs vs IFS ENS member-mean daily highs.'}
 
 
 def parse_jtwc_abpw(text):
@@ -396,58 +415,6 @@ def compute_city(city, start, end):
     return result
 
 
-def regional_digest(raw):
-    """Mechanical regional-grid statistics behind the outlook table.
-
-    Ulaanbaatar: the grid's maximum MSLP and the pooled tendency over the
-    first 72 hours of the regional series (the Siberian High segment of
-    the monsoon row). Manchuria / Sea of Japan: the grid's minimum MSLP in
-    the same span, with the grid point and valid time — the
-    extratropical-cyclone row's floor, a grid statistic only, never a
-    cyclone identification.
-    """
-    reg = raw.get('regional_forecasts') or {}
-
-    def samples(area):
-        rows = []
-        for point in (reg.get(area) or {}).get('grid_forecasts') or []:
-            hourly = point.get('hourly') or {}
-            for t, v in zip(hourly.get('time') or [], hourly.get('pressure_msl') or []):
-                if numeric(v):
-                    rows.append((parse_time(t), float(v),
-                                 point.get('latitude'), point.get('longitude')))
-        return sorted(rows)
-
-    digest = {}
-    for area in ('ulaanbaatar', 'manchuria', 'sea_of_japan'):
-        rows = samples(area)
-        if not rows:
-            continue
-        start = rows[0][0]
-        rows = [r for r in rows if r[0] < start + dt.timedelta(hours=72)]
-        if not rows:
-            continue
-        entry = {'span_hours': 72, 'samples': len(rows)}
-        if area == 'ulaanbaatar':
-            peak = max(rows, key=lambda r: r[1])
-            entry['max_pressure_hpa'] = round(peak[1], 1)
-            entry['max_at_utc'] = peak[0].isoformat()
-            first = [r[1] for r in rows if r[0] < start + dt.timedelta(hours=24)]
-            last_start = max(r[0] for r in rows) - dt.timedelta(hours=24)
-            last = [r[1] for r in rows if r[0] > last_start]
-            if first and last:
-                entry['tendency_hpa'] = round(
-                    sum(last) / len(last) - sum(first) / len(first), 1)
-        else:
-            low = min(rows, key=lambda r: r[1])
-            entry['min_pressure_hpa'] = round(low[1], 1)
-            entry['min_at_utc'] = low[0].isoformat()
-            entry['latitude'] = low[2]
-            entry['longitude'] = low[3]
-        digest[area] = entry
-    return digest
-
-
 def compute_bundle(raw):
     start, end = parse_time(raw['window_start_utc']), parse_time(raw['window_end_utc'])
     cities = {}
@@ -495,10 +462,15 @@ def compute_bundle(raw):
                 'None of them silently replaces JTWC warnings.'}
     day0 = dt.date.fromisoformat(raw['target_date_jst'])
     chart_confidence = {}
+    chart_confidence_aifs = {}
+    aifs_crosscheck = {}
     for key in ('hong_kong', 'tokyo_minato'):
         name = CITIES[key][0]
         if name in raw.get('cities', {}):
             chart_confidence[name] = chart_confidence_for_city(raw['cities'][name], day0, days=28)
+            chart_confidence_aifs[name] = chart_confidence_for_city(
+                raw['cities'][name], day0, days=28, ensemble_key='aifs_ensemble')
+            aifs_crosscheck[name] = _aifs_single_crosscheck(raw['cities'][name])
     return {'schema': 'east_asia_weather_calculated_v1',
             'target_date_jst': raw['target_date_jst'], 'window_start_utc': start.isoformat(),
             'window_end_utc': end.isoformat(), 'collection_utc': raw['collection_utc'],
@@ -510,8 +482,9 @@ def compute_bundle(raw):
                                     'note': 'Calculation success does not resolve missing original report requirements.'},
             'cities': cities, 'cyclone_watch': cyclone_watch,
             'space_weather': parse_space_weather(sources),
-            'regional_digest': regional_digest(raw),
-            'chart_confidence': chart_confidence}
+            'chart_confidence': chart_confidence,
+            'chart_confidence_aifs': chart_confidence_aifs,
+            'aifs_crosscheck': aifs_crosscheck}
 
 
 def main():

@@ -31,6 +31,17 @@ def build_specialist_jobs(cities):
             'latitude': lat, 'longitude': lon, 'models': 'ecmwf_ifs025',
             'hourly': 'temperature_2m,precipitation,cloud_cover',
             'forecast_days': 16, 'timezone': 'GMT'}, True)
+        # AIFS (ECMWF's AI model) for the second chart: its ensemble leads
+        # that chart's cascade; the deterministic Single is fetched alongside
+        # as a recorded cross-check.
+        jobs[f'{key}/aifs_ensemble'] = ('https://ensemble-api.open-meteo.com/v1/ensemble', {
+            'latitude': lat, 'longitude': lon, 'models': 'ecmwf_aifs025_ensemble',
+            'hourly': 'temperature_2m,precipitation,cloud_cover',
+            'forecast_days': 16, 'timezone': 'GMT'}, True)
+        jobs[f'{key}/aifs_single'] = ('https://api.open-meteo.com/v1/ecmwf', {
+            'latitude': lat, 'longitude': lon, 'models': 'ecmwf_aifs025',
+            'hourly': 'temperature_2m,weather_code',
+            'forecast_days': 15, 'timezone': 'GMT'}, True)
     for key, code in [('tokyo_minato', '13103'), ('takamatsu', '37201')]:
         jobs[f'{key}/pollen'] = (f'https://site.weathernews.jp/site/pollen/json/fcst/city_r5/{code}.json', None, False)
     jobs['pollen/publication_config'] = ('https://weathernews.jp/pollen/html_resources/city/bundle.min.js', None, False)
@@ -122,7 +133,8 @@ def _member_daily(hourly, times, tz, with_rain=True):
     return out
 
 
-def extract_temperature_ensemble(source, start, end, tz_name=None):
+def extract_temperature_ensemble(source, start, end, tz_name=None,
+                                 model='ecmwf_ifs025_ensemble'):
     """Keep the IFS ensemble temperature members for the chart cities.
 
     The 06:00 chart grades each day's confidence from the spread of the
@@ -163,7 +175,7 @@ def extract_temperature_ensemble(source, start, end, tz_name=None):
         if values:
             mean_time.append(text)
             mean_temp.append(round(sum(values) / len(values), 3))
-    return {'model': 'ecmwf_ifs025_ensemble', 'hourly': hourly,
+    return {'model': model, 'hourly': hourly,
             'mean_hourly': {'time': mean_time, 'temperature_2m': mean_temp},
             'daily': daily,
             'units': raw.get('hourly_units', {}) if isinstance(raw, dict) else {},

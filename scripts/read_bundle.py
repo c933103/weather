@@ -109,8 +109,23 @@ def main():
         svg_path.write_bytes(blob)
         bundle['chart_svg_local_path'] = str(svg_path)
         bundle['chart_svg_url'] = base+chart_svg['path']
-    for key, fname in (('table1', 'report_table1.md'), ('table2', 'report_table2.md'),
-                       ('table3', 'report_table3.md'), ('table4', 'report_table4.md')):
+    # The AIFS chart is an optional product: downloaded (and verified) only
+    # when the workflow reports it ready.
+    if bundle['products'].get('chart_aifs_ready'):
+        for key, fname in (('chart_aifs', 'report_aifs.png'),
+                           ('chart_aifs_svg', 'report_aifs.svg')):
+            entry = bundle['products'].get(key)
+            if entry:
+                if entry['path'] != f'latest/{key}.png' and entry['path'] != f'latest/{key}.svg':
+                    raise ValueError(f'UNEXPECTED_{key.upper()}_PATH')
+                blob = get_bytes(base+entry['path'])
+                verify_bytes(blob, entry)
+                aifs_path = args.out.with_name(fname)
+                aifs_path.parent.mkdir(parents=True, exist_ok=True)
+                aifs_path.write_bytes(blob)
+                bundle[f'{key}_local_path'] = str(aifs_path)
+                bundle[f'{key}_url'] = base+entry['path']
+    for key, fname in (('table1', 'report_table1.md'), ('table2', 'report_table2.md')):
         entry = bundle['products'].get(key)
         if entry:
             if entry['path'] != f'latest/{key}.md':

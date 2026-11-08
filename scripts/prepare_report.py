@@ -35,7 +35,8 @@ def prepare(output):
     calc_path.write_text(json.dumps(calculated, ensure_ascii=False, allow_nan=False), encoding='utf-8')
     manifest['files']['calculated'] = file_entry(calc_path)
     products = {'calculation_ready': calculated['calculation_quality']['ready'],
-                'chart_ready': False, 'prepared_at_utc': iso_now(),
+                'chart_ready': False, 'chart_aifs_ready': False,
+                'prepared_at_utc': iso_now(),
                 'execution': 'GitHub Actions' if os.getenv('GITHUB_ACTIONS') == 'true' else 'local'}
     # Remove a prior product before rendering so a failed retry cannot publish it.
     chart_path = latest / 'chart.png'
@@ -53,6 +54,30 @@ def prepare(output):
         products['chart_error'] = f'{type(exc).__name__}: {exc}'
         chart_path.unlink(missing_ok=True)
         chart_path.with_suffix('.svg').unlink(missing_ok=True)
+    # AIFS variant of the 28-day chart (same design; AIFS ENS cascade into
+    # the same EC46 tail). Its failure never blocks the main products.
+    chart_aifs_path = latest / 'chart_aifs.png'
+    chart_aifs_path.unlink(missing_ok=True)
+    chart_aifs_path.with_suffix('.svg').unlink(missing_ok=True)
+    try:
+        aifs_used = any('aifs' in (marker or '')
+                        for city_record in raw.get('cities', {}).values()
+                        for marker in ((city_record.get('aifs_chart_hourly') or {})
+                                       .get('sample_model') or []))
+        if not aifs_used:
+            raise ValueError('AIFS tier absent from the collected series')
+        from render_chart import render as render_any
+        products['chart_aifs_coverage'] = render_any(
+            raw, raw['target_date_jst'], chart_aifs_path, flavour='aifs')
+        products['chart_aifs'] = file_entry(chart_aifs_path)
+        svg_aifs = chart_aifs_path.with_suffix('.svg')
+        if svg_aifs.exists():
+            products['chart_aifs_svg'] = file_entry(svg_aifs)
+        products['chart_aifs_ready'] = True
+    except Exception as exc:
+        products['chart_aifs_error'] = f'{type(exc).__name__}: {exc}'
+        chart_aifs_path.unlink(missing_ok=True)
+        chart_aifs_path.with_suffix('.svg').unlink(missing_ok=True)
     # The pipe tables are deterministic formatting of the calculated bundle
     # (user, 2026-11-07: also GitHub-generatable, like the chart). A table
     # failure never blocks the chart or the calculation.
@@ -73,26 +98,6 @@ def prepare(output):
         products['tables_ready'] = False
         table1_path.unlink(missing_ok=True)
         table2_path.unlink(missing_ok=True)
-    # Message 3's structured outlook tables (Table 3 cyclones, Table 4 the
-    # fixed-row special outlook), rendered from the same calculated bundle.
-    # A failure here never blocks the tables, the chart or the calculation.
-    table3_path = latest / 'table3.md'
-    table4_path = latest / 'table4.md'
-    table3_path.unlink(missing_ok=True)
-    table4_path.unlink(missing_ok=True)
-    try:
-        from render_tables import render_outlook
-        t3, t4 = render_outlook(raw, calculated)
-        table3_path.write_text(t3, encoding='utf-8')
-        table4_path.write_text(t4, encoding='utf-8')
-        products['table3'] = file_entry(table3_path)
-        products['table4'] = file_entry(table4_path)
-        products['outlook_ready'] = True
-    except Exception as exc:
-        products['outlook_error'] = f'{type(exc).__name__}: {exc}'
-        products['outlook_ready'] = False
-        table3_path.unlink(missing_ok=True)
-        table4_path.unlink(missing_ok=True)
     manifest['products'] = products
     # Never replace the original collection quality with calculation/chart success.
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')

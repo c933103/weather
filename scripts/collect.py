@@ -190,7 +190,27 @@ def forecast_result(source, model, lat, lon):
             'initialization_note': 'Provider response does not identify the initialization cycle; generationtime_ms is not an issue time.'}
 
 
-def combined_temperature(ifs, extended, ens_mean=None):
+def _daily_extrema(hourly, tz_name):
+    """Per-local-date min/max of an hourly temperature series (samples only)."""
+    zone = ZoneInfo(tz_name)
+    ts = (hourly or {}).get('time') or []
+    temps = (hourly or {}).get('temperature_2m') or []
+    out = {}
+    for t, v in zip(ts, temps):
+        if not numeric(v):
+            continue
+        day = parse_time(t).astimezone(zone).date().isoformat()
+        cur = out.setdefault(day, {'high': v, 'low': v})
+        cur['high'] = max(cur['high'], v)
+        cur['low'] = min(cur['low'], v)
+    return out
+
+
+def combined_temperature(ifs, extended, ens_mean=None,
+                         first_marker='ecmwf_ifs_9km',
+                         ens_marker='ecmwf_ifs025_ensemble_mean',
+                         ext_marker='ecmwf_ec46_ensemble_mean_36km',
+                         tail_note=None):
     """Reliability cascade for the 28-day chart series.
 
     Most reliable source first: ECMWF IFS 9km deterministic while it lasts,
@@ -198,12 +218,13 @@ def combined_temperature(ifs, extended, ens_mean=None):
     contributes only samples after the previous tier's last timestamp. Every
     sample retains its model marker; no extrapolation, bias correction or
     fabricated tail. The chart labels this cascade beneath the axes from the
-    sample_model markers.
+    sample_model markers. The AIFS chart reuses this with its own markers:
+    the AIFS ensemble mean first, then the same EC46 tail.
     """
-    tiers = [(ifs, 'ecmwf_ifs_9km')]
+    tiers = [(ifs, first_marker)]
     if ens_mean:
-        tiers.append((ens_mean, 'ecmwf_ifs025_ensemble_mean'))
-    tiers.append((extended, 'ecmwf_ec46_ensemble_mean_36km'))
+        tiers.append((ens_mean, ens_marker))
+    tiers.append((extended, ext_marker))
     samples = {}
     used = []
     for source, marker in tiers:
@@ -233,11 +254,12 @@ def combined_temperature(ifs, extended, ens_mean=None):
             'sample_model': [samples[t][2] for t in ordered],
             'temperature_2m_min': [samples[t][3] for t in ordered],
             'temperature_2m_max': [samples[t][4] for t in ordered],
-            'model': '+'.join(used) if used else 'ecmwf_ifs_9km',
+            'model': '+'.join(used) if used else first_marker,
             'units': {'temperature_2m': '°C', 'weather_code': 'wmo code'},
-            'tail_note': 'Cascade in reliability order: IFS 9km deterministic, then IFS '
+            'tail_note': tail_note or (
+                         'Cascade in reliability order: IFS 9km deterministic, then IFS '
                          'ensemble mean, then EC46 ensemble mean (36km, six-hour). Each '
-                         'sample keeps its source model; nothing is extrapolated.'}
+                         'sample keeps its source model; nothing is extrapolated.')}
 
 
 _WARNING_POS = re.compile(
@@ -989,6 +1011,37 @@ def collect(day, out):
                                 'source': 'ec46', 'members': v.get('temp_members')}
             city['member_extrema'] = mext
             city['checks']['chart_28d'] = audit_long(city['chart_hourly'], start, chart_end)
+            # AIFS variant of the chart (user, 2026-11-08): the AIFS ensemble
+            # leads its own cascade into the same EC46 tail. AIFS Single is
+            # fetched alongside and kept as a daily-extrema record for the
+            # cross-check; at 0.25° and six-hourly sampling it offers no
+            # advantage over its own ENS for the plotted extrema.
+            city['aifs_ensemble'] = extract_temperature_ensemble(
+                root['sources'][f'{key}/aifs_ensemble'], start, long_end, zone,
+                model='ecmwf_aifs025_ensemble')
+            aifs_mean = city['aifs_ensemble'].get('mean_hourly')
+            city['aifs_chart_hourly'] = combined_temperature(
+                aifs_mean, extended, None,
+                first_marker='ecmwf_aifs025_ensemble_mean',
+                tail_note='AIFS cascade: ECMWF AIFS ensemble mean (0.25 degrees), '
+                          'then EC46 ensemble mean (36km, six-hour). Each sample '
+                          'keeps its source model; nothing is extrapolated.')
+            aifs_single = forecast_result(root['sources'][f'{key}/aifs_single'],
+                                          'ecmwf_aifs025', lat, lon)
+            city['aifs_single_daily'] = _daily_extrema(aifs_single, zone)
+            aext = {}
+            for ds, v in ((city.get('aifs_ensemble') or {}).get('daily') or {}).items():
+                if v.get('temp_high_member_mean') is not None or v.get('temp_nightlow_member_mean') is not None:
+                    aext[ds] = {'high': v.get('temp_high_member_mean'),
+                                'night_low': v.get('temp_nightlow_member_mean'),
+                                'source': 'aifs_ens', 'members': v.get('members')}
+            for ds, v in (city.get('ec46_daily') or {}).items():
+                if v.get('temp_high_member_mean') is not None or v.get('temp_nightlow_member_mean') is not None:
+                    aext[ds] = {'high': v.get('temp_high_member_mean'),
+                                'night_low': v.get('temp_nightlow_member_mean'),
+                                'source': 'ec46', 'members': v.get('members')}
+            city['aifs_member_extrema'] = aext
+            city['checks']['aifs_chart_28d'] = audit_long(city['aifs_chart_hourly'], start, chart_end)
             chart_checks.append(city['checks']['chart_28d']['ready'])
         if key in ('tokyo_minato', 'takamatsu'):
             parts = [jma_hourly_tides(root['sources'][f'{key}/hourly_tide_{year}'], year, start, end,
