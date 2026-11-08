@@ -112,11 +112,11 @@ def main():
     # The AIFS chart is an optional product: downloaded (and verified) only
     # when the workflow reports it ready.
     if bundle['products'].get('chart_aifs_ready'):
-        for key, fname in (('chart_aifs', 'report_aifs.png'),
-                           ('chart_aifs_svg', 'report_aifs.svg')):
+        for key, fname, expected in (('chart_aifs', 'report_aifs.png', 'latest/chart_aifs.png'),
+                                     ('chart_aifs_svg', 'report_aifs.svg', 'latest/chart_aifs.svg')):
             entry = bundle['products'].get(key)
             if entry:
-                if entry['path'] != f'latest/{key}.png' and entry['path'] != f'latest/{key}.svg':
+                if entry['path'] != expected:
                     raise ValueError(f'UNEXPECTED_{key.upper()}_PATH')
                 blob = get_bytes(base+entry['path'])
                 verify_bytes(blob, entry)
