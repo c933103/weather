@@ -506,6 +506,84 @@ def coastal_assessment(raw_city):
     return out
 
 
+# Per-city monsoon / cold-surge indicators (user probe, 2026-11-08: the
+# 季節風 row's evidence was the Ulaanbaatar grid and the ABPW text only —
+# the four report cities themselves were never assessed). Computed over
+# the seven days from the window start from the city's own hourly
+# forecast: the strongest 24-hour temperature fall and the strongest
+# 24-hour pressure rise (the classic surge signature pair), and the
+# strongest wind inside the city's monsoon sector (NE monsoon for Hong
+# Kong / Taipei, NW monsoon for the Japanese cities). surge_signature
+# requires BOTH limbs past threshold; the numbers are always carried so
+# the report run can judge weaker cases itself.
+MONSOON_SECTORS = {'Hong Kong': (300, 100), 'Taipei': (300, 100),
+                   'Tokyo Minato Ward': (260, 80), 'Takamatsu': (260, 80)}
+SURGE_DROP_C = -5.0
+SURGE_RISE_HPA = 5.0
+
+
+def _in_sector(deg, sector):
+    lo, hi = sector
+    return lo <= deg <= hi if lo <= hi else (deg >= lo or deg <= hi)
+
+
+def monsoon_digest(city, name, start):
+    h = city.get('hourly') or {}
+    zone = ZoneInfo(city.get('timezone') or 'UTC')
+    horizon = start + dt.timedelta(days=7)
+    series = {}
+    for field in ('temperature_2m', 'pressure_msl', 'wind_speed_10m',
+                  'wind_direction_10m', 'wind_gusts_10m'):
+        series[field] = {}
+        for t, v in zip(h.get('time') or [], h.get(field) or []):
+            if v is None:
+                continue
+            stamp = parse_time(t)
+            if start <= stamp <= horizon:
+                series[field][stamp] = v
+    out = {'ready': False}
+    temps, press = series['temperature_2m'], series['pressure_msl']
+    if len(temps) >= 25 and len(press) >= 25:
+        drop = rise = None
+        for stamp, v in temps.items():
+            later = stamp + dt.timedelta(hours=24)
+            if later in temps:
+                d = temps[later] - v
+                if drop is None or d < drop[0]:
+                    drop = (d, later)
+        for stamp, v in press.items():
+            later = stamp + dt.timedelta(hours=24)
+            if later in press:
+                r = press[later] - v
+                if rise is None or r > rise[0]:
+                    rise = (r, later)
+        sector = MONSOON_SECTORS.get(name, (300, 100))
+        north = None
+        for stamp, deg in series['wind_direction_10m'].items():
+            speed = series['wind_speed_10m'].get(stamp)
+            if speed is None or not _in_sector(deg, sector):
+                continue
+            if north is None or speed > north[0]:
+                north = (speed, series['wind_gusts_10m'].get(stamp), stamp)
+
+        def _local(stamp):
+            return stamp.astimezone(zone).strftime('%m-%d %H:%M') if stamp else None
+
+        out = {'ready': True,
+               'max_24h_temp_drop_c': round(drop[0], 1) if drop else None,
+               'drop_end_local': _local(drop[1]) if drop else None,
+               'max_24h_pressure_rise_hpa': round(rise[0], 1) if rise else None,
+               'rise_end_local': _local(rise[1]) if rise else None,
+               'northerly_max_ms': round(north[0], 1) if north else None,
+               'northerly_gust_ms': (round(north[1], 1)
+                                     if north and north[1] is not None else None),
+               'northerly_at_local': _local(north[2]) if north else None,
+               'surge_signature': bool(drop and rise
+                                       and drop[0] <= SURGE_DROP_C
+                                       and rise[0] >= SURGE_RISE_HPA)}
+    return out
+
+
 def compute_city(city, start, end):
     h = city['hourly']
     result = {v: value_range(select(h, v, start, end)) for v in (
@@ -762,6 +840,12 @@ def compute_bundle(raw):
                 cities[name]['coastal_assessment'] = coastal_assessment(raw['cities'][name])
             except Exception as exc:
                 cities[name]['coastal_assessment'] = {'error': f'{type(exc).__name__}: {exc}'}
+    for name in list(cities):
+        if not cities[name].get('error'):
+            try:
+                cities[name]['monsoon'] = monsoon_digest(raw['cities'][name], name, start)
+            except Exception as exc:
+                cities[name]['monsoon'] = {'error': f'{type(exc).__name__}: {exc}'}
     checks = {}
     for name, city in cities.items():
         checks[name] = not city.get('error') and all(

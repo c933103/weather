@@ -572,7 +572,7 @@ def _system_row(raw, anchor, system):
     return f"| {head} | {'・'.join(pos)} | {motion} | ―（警報未発出） |"
 
 
-def _monsoon_analysis(cw, digest):
+def _monsoon_analysis(cw, digest, cities=None):
     mentions = (cw or {}).get('monsoon_mentions') or []
     parts = ['モンスーンの特記なし' if not mentions
              else f"モンスーンの言及あり（ABPW {len(mentions)}行）"]
@@ -585,10 +585,21 @@ def _monsoon_analysis(cw, digest):
             parts.append('シベリア高気圧は強まる傾向（寒気の南下に注意）')
         else:
             parts.append('シベリア高気圧に大きな変化なし')
+    # Per-city limb (2026-11-08): the four cities' own surge indicators,
+    # not only the UB grid — a city is named when its 24h temperature
+    # fall AND pressure rise both pass the surge thresholds.
+    digests = [(label, ((cities or {}).get(name) or {}).get('monsoon') or {})
+               for name, label in CITY_ORDER]
+    surged = [label for label, d in digests if d.get('surge_signature')]
+    if surged:
+        parts.append(f"{'・'.join(surged)}に寒気サージの指標あり"
+                     '（24h低下・昇圧がともに閾値超過）')
+    elif any(d.get('ready') for _, d in digests):
+        parts.append('4市に寒気サージの指標なし')
     return '。'.join(parts)
 
 
-def _monsoon_values(cw, digest):
+def _monsoon_values(cw, digest, cities=None):
     ub = (digest or {}).get('ulaanbaatar') or {}
     parts = []
     if ub.get('max_pressure_hpa') is not None:
@@ -598,6 +609,20 @@ def _monsoon_values(cw, digest):
         parts.append(seg)
     if (cw or {}).get('monsoon_mentions'):
         parts.append(f"ABPW言及 {len(cw['monsoon_mentions'])}行")
+    segs = []
+    for name, label in CITY_ORDER:
+        m = ((cities or {}).get(name) or {}).get('monsoon') or {}
+        if not m.get('ready') or m.get('max_24h_temp_drop_c') is None:
+            continue
+        seg = (f"{label} 低下 {m['max_24h_temp_drop_c']:+.1f}℃"
+               f"（{m.get('drop_end_local')}）"
+               f"・昇圧 {m['max_24h_pressure_rise_hpa']:+.1f}hPa"
+               f"・北寄り最大 {fmt(m.get('northerly_max_ms'))}m/s")
+        if m.get('surge_signature'):
+            seg += '（サージ指標）'
+        segs.append(seg)
+    if segs:
+        parts.append('4市指標 ' + '｜'.join(segs))
     return '・'.join(parts) if parts else '―'
 
 
@@ -796,7 +821,7 @@ def render_outlook(raw, calculated):
     digest = calculated.get('regional_digest') or {}
     sw = calculated.get('space_weather')
     t4 = ['| 項目 | 分析 | 数値・根拠 |', '|---|---|---|',
-          f"| 季節風 | {_monsoon_analysis(cw, digest)} | {_monsoon_values(cw, digest)} |",
+          f"| 季節風 | {_monsoon_analysis(cw, digest, calculated.get('cities'))} | {_monsoon_values(cw, digest, calculated.get('cities'))} |",
           f"| 温帯低気圧 | {_etc_analysis(digest)} | {_etc_values(digest)} |",
           f"| 地域災害 | {_regional_hazard(calculated)[0]} | {_regional_hazard(calculated)[1]} |",
           f"| 宇宙天気 | {_space_analysis(sw)} | {_space_values(sw)} |",

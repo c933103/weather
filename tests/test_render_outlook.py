@@ -125,6 +125,38 @@ class RenderOutlookTests(unittest.TestCase):
                       '| プロダクト HTTP 404・6基準時刻遡及｜進路サンプル GFS 有・ECMWF開放データ 有 |', lines)
         self.assertFalse(any('判定' in ln for ln in lines))
 
+    def test_table4_monsoon_city_surge(self):
+        calc = calculated()
+        calm = {'ready': True, 'max_24h_temp_drop_c': -2.0,
+                'drop_end_local': '11-12 06:00', 'max_24h_pressure_rise_hpa': 3.0,
+                'rise_end_local': '11-12 06:00', 'northerly_max_ms': 8.0,
+                'northerly_gust_ms': 12.0, 'northerly_at_local': '11-12 06:00',
+                'surge_signature': False}
+        surge = {**calm, 'max_24h_temp_drop_c': -6.5,
+                 'max_24h_pressure_rise_hpa': 7.2, 'northerly_max_ms': 12.3,
+                 'surge_signature': True}
+        calc['cities'] = {'Hong Kong': {'monsoon': surge},
+                          'Taipei': {'monsoon': calm},
+                          'Tokyo Minato Ward': {'monsoon': calm},
+                          'Takamatsu': {'monsoon': calm}}
+        _t3, t4 = render_outlook(raw(), calc)
+        self.assertIn('香港に寒気サージの指標あり', t4)
+        self.assertIn('4市指標 ', t4)
+        self.assertIn('香港 低下 -6.5℃（11-12 06:00）・昇圧 +7.2hPa・北寄り最大 12.3m/s（サージ指標）', t4)
+        self.assertIn('台北 低下 -2.0℃', t4)
+
+    def test_table4_monsoon_cities_no_surge(self):
+        calc = calculated()
+        calm = {'ready': True, 'max_24h_temp_drop_c': -1.0,
+                'drop_end_local': '11-12 06:00', 'max_24h_pressure_rise_hpa': 2.0,
+                'rise_end_local': '11-12 06:00', 'northerly_max_ms': 5.0,
+                'northerly_gust_ms': None, 'northerly_at_local': '11-12 06:00',
+                'surge_signature': False}
+        calc['cities'] = {name: {'monsoon': calm} for name in
+                          ('Hong Kong', 'Taipei', 'Tokyo Minato Ward', 'Takamatsu')}
+        _t3, t4 = render_outlook(raw(), calc)
+        self.assertIn('4市に寒気サージの指標なし', t4)
+
     def test_table4_weakening_high_quiet_space_and_monsoon_mention(self):
         calc = calculated()
         calc['regional_digest']['ulaanbaatar']['tendency_hpa'] = -25.3
