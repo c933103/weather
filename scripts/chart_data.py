@@ -265,8 +265,9 @@ def build_chart_data(raw, target_day, flavour='ifs'):
     Raises on the same conditions the retired in-process renderer raised:
     a synthetic/test fixture, a non-ECMWF hourly source, or no verified
     consecutive day-high / night-low windows at all. flavour='aifs' derives
-    the same chart from the AIFS cascade (AIFS ENS into the EC46 tail),
-    with AIFS-ensemble confidence grades.
+    the same chart from the AIFS ensemble only, with AIFS-ensemble
+    confidence grades; days beyond the AIFS horizon are left blank (no
+    line, no icon, no grade) rather than filled by another model.
     """
     if flavour == 'aifs':
         hourly_key, mext_key, ens_key = ('aifs_chart_hourly',
@@ -305,10 +306,18 @@ def build_chart_data(raw, target_day, flavour='ifs'):
                                                    ensemble_key=ens_key)
             except Exception:
                 grades = {}
+        # On the AIFS chart, days beyond the last AIFS-sampled local date
+        # are blank slots: no icon and no grade (the series itself carries
+        # no samples there, so no line or envelope either).
+        last_day = arr[-1][0].astimezone(SITES[city][1]).date() if arr else d0
         icons = []
         grade_list = []
         for i in range(28):
             dd = d0 + timedelta(days=i)
+            if flavour == 'aifs' and dd > last_day:
+                icons.append({'emoji': '', 'asset': None})
+                grade_list.append(None)
+                continue
             ch = daily_icon(row, dd, SITES[city][1], hourly_key=hourly_key,
                             ens_key=ens_key)
             icons.append({'emoji': ch, 'asset': EMOJI_ASSETS.get(ch)})

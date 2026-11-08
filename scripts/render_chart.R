@@ -191,11 +191,13 @@ draw_figure <- function() {
                     width = unit(w_in, 'in'), height = unit(h_in, 'in'))
         emoji_drawn <<- emoji_drawn + 1
         txt(paste0('/', grade_txt), cx + 0.005 * W, ROW_Y[ri], 10.5)
-      } else {
+      } else if (!is.null(icon$emoji) && icon$emoji != '') {
         grid.text(paste0('―/', grade_txt), x = unit(cx, 'in'),
                   y = unit(ROW_Y[ri], 'in'), just = 'center',
                   gp = gpar(fontfamily = FONT, fontsize = 10.5))
       }
+      # An empty emoji marks a deliberately blank slot (the AIFS chart
+      # beyond the AIFS horizon): nothing is drawn for that day.
     }
   }
   if (nzchar(cascade_note)) txt(cascade_note, PANEL$x, 0.068 * H, 9.8, col = '#444444')

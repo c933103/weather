@@ -29,6 +29,17 @@ class CascadeMarkerTests(unittest.TestCase):
                           'ecmwf_ec46_ensemble_mean_36km'])
         self.assertTrue(out['model'].startswith('ecmwf_aifs025_ensemble_mean+'))
 
+    def test_combined_temperature_aifs_only_no_tail(self):
+        # The AIFS chart series carries no second model: an empty tail
+        # contributes nothing and the model string is the AIFS marker alone.
+        first = {'time': ['2026-11-08T00:00:00+00:00', '2026-11-08T06:00:00+00:00'],
+                 'temperature_2m': [10.0, 11.0]}
+        out = collect.combined_temperature(first, {}, None,
+                                           first_marker='ecmwf_aifs025_ensemble_mean')
+        self.assertEqual(out['sample_model'],
+                         ['ecmwf_aifs025_ensemble_mean'] * 2)
+        self.assertEqual(out['model'], 'ecmwf_aifs025_ensemble_mean')
+
 
 class ExtractLabelTests(unittest.TestCase):
     def test_extract_temperature_ensemble_aifs_label(self):
@@ -88,12 +99,12 @@ def _synthetic_aifs_raw():
                           ('Hong Kong', 'Asia/Hong_Kong')):
         t0 = dt.datetime(2026, 11, 7, tzinfo=dt.timezone.utc)
         times, temps, models = [], [], []
-        for i in range(120):
+        # AIFS-like span only: 68 six-hourly stamps = 17 days, all AIFS.
+        for i in range(68):
             t = t0 + dt.timedelta(hours=6 * i)
             times.append(t.isoformat())
             temps.append(14 + 6 * math.sin(2 * math.pi * (i % 4) / 4) + (i % 7) * 0.1)
-            models.append('ecmwf_aifs025_ensemble_mean' if i < 40
-                          else 'ecmwf_ec46_ensemble_mean_36km')
+            models.append('ecmwf_aifs025_ensemble_mean')
         n = len(times)
         ens_times = [(t0 + dt.timedelta(hours=h)).isoformat() for h in range(16 * 24)]
         ens_hourly = {'time': ens_times,
@@ -108,7 +119,7 @@ def _synthetic_aifs_raw():
             daily[day] = {'p_rain_1mm': 0.1, 'p_rain_10mm': 0.0, 'p_snow': 0.0,
                           'daytime_cloud_mean': 30.0}
             mext[day] = {'high': 20.0, 'night_low': 10.0,
-                         'source': 'aifs_ens' if d < 10 else 'ec46', 'members': 51}
+                         'source': 'aifs_ens', 'members': 51}
         cities[name] = {
             'timezone': tz_name,
             'aifs_chart_hourly': {'time': times, 'temperature_2m': temps,
@@ -116,7 +127,7 @@ def _synthetic_aifs_raw():
                                   'temperature_2m_min': [None] * n,
                                   'temperature_2m_max': [None] * n,
                                   'sample_model': models,
-                                  'model': 'ecmwf_aifs025_ensemble_mean+ecmwf_ec46_ensemble_mean_36km'},
+                                  'model': 'ecmwf_aifs025_ensemble_mean'},
             'aifs_ensemble': {'model': 'ecmwf_aifs025_ensemble',
                               'hourly': ens_hourly, 'daily': daily},
             'aifs_member_extrema': mext,
@@ -132,12 +143,31 @@ class RenderSmokeTests(unittest.TestCase):
             coverage = render_chart.render(raw, '2026-11-08', out, flavour='aifs')
             self.assertTrue(out.exists())
             self.assertGreater(out.stat().st_size, 10000)
-            self.assertEqual(coverage['Tokyo Minato Ward']['high_days'], 28)
-            self.assertEqual(coverage['Hong Kong']['high_days'], 28)
+            # Only the AIFS span is plotted: 16 complete local days of the
+            # 17-day series carry a day high; the rest of the 28-day frame
+            # stays blank (no EC46 fill).
+            self.assertEqual(coverage['Tokyo Minato Ward']['high_days'], 16)
+            self.assertEqual(coverage['Hong Kong']['high_days'], 16)
         note = render_chart.cascade_note(
             {name: raw['cities'][name] for name in raw['cities']},
             dt.date(2026, 11, 8), hourly_key='aifs_chart_hourly')
         self.assertIn('AIFSアンサンブル平均', note)
+        self.assertNotIn('EC46', note)
+
+    def test_aifs_beyond_horizon_slots_blank(self):
+        from chart_data import build_chart_data
+        raw = _synthetic_aifs_raw()
+        data, _ = build_chart_data(raw, '2026-11-08', flavour='aifs')
+        tokyo = data['cities'][0]
+        # Day 0 (11/08) is inside the AIFS span: a real icon and grade.
+        self.assertNotEqual(tokyo['icons'][0]['emoji'], '')
+        self.assertIsNotNone(tokyo['grades'][0])
+        # The last AIFS-sampled local date is 11/24 (slot 16); from 11/25
+        # (slot 17) on, slots are blank: empty emoji, no grade.
+        self.assertEqual(tokyo['icons'][17], {'emoji': '', 'asset': None})
+        self.assertIsNone(tokyo['grades'][17])
+        self.assertEqual(tokyo['icons'][27], {'emoji': '', 'asset': None})
+        self.assertIsNone(tokyo['grades'][27])
 
 
 class DailyExtremaTests(unittest.TestCase):

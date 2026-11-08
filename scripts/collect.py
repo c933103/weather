@@ -1012,8 +1012,10 @@ def collect(day, out):
             city['member_extrema'] = mext
             city['checks']['chart_28d'] = audit_long(city['chart_hourly'], start, chart_end)
             # AIFS variant of the chart (user, 2026-11-08): the AIFS ensemble
-            # leads its own cascade into the same EC46 tail. AIFS Single is
-            # fetched alongside and kept as a daily-extrema record for the
+            # alone — days beyond the AIFS horizon stay blank on that chart;
+            # no other model fills them (user correction, 2026-11-08: the
+            # EC46 tail is NOT part of the AIFS chart). AIFS Single is fetched
+            # alongside and kept as a daily-extrema record for the
             # cross-check; at 0.25° and six-hourly sampling it offers no
             # advantage over its own ENS for the plotted extrema.
             city['aifs_ensemble'] = extract_temperature_ensemble(
@@ -1021,11 +1023,11 @@ def collect(day, out):
                 model='ecmwf_aifs025_ensemble')
             aifs_mean = city['aifs_ensemble'].get('mean_hourly')
             city['aifs_chart_hourly'] = combined_temperature(
-                aifs_mean, extended, None,
+                aifs_mean, {}, None,
                 first_marker='ecmwf_aifs025_ensemble_mean',
-                tail_note='AIFS cascade: ECMWF AIFS ensemble mean (0.25 degrees), '
-                          'then EC46 ensemble mean (36km, six-hour). Each sample '
-                          'keeps its source model; nothing is extrapolated.')
+                tail_note='AIFS chart series: ECMWF AIFS ensemble mean '
+                          '(0.25 degrees) only; days beyond the AIFS horizon '
+                          'are left blank by design.')
             aifs_single = forecast_result(root['sources'][f'{key}/aifs_single'],
                                           'ecmwf_aifs025', lat, lon)
             city['aifs_single_daily'] = _daily_extrema(aifs_single, zone)
@@ -1035,13 +1037,11 @@ def collect(day, out):
                     aext[ds] = {'high': v.get('temp_high_member_mean'),
                                 'night_low': v.get('temp_nightlow_member_mean'),
                                 'source': 'aifs_ens', 'members': v.get('members')}
-            for ds, v in (city.get('ec46_daily') or {}).items():
-                if v.get('temp_high_member_mean') is not None or v.get('temp_nightlow_member_mean') is not None:
-                    aext[ds] = {'high': v.get('temp_high_member_mean'),
-                                'night_low': v.get('temp_nightlow_member_mean'),
-                                'source': 'ec46', 'members': v.get('members')}
             city['aifs_member_extrema'] = aext
-            city['checks']['aifs_chart_28d'] = audit_long(city['aifs_chart_hourly'], start, chart_end)
+            ens_times = ((city['aifs_ensemble'].get('hourly') or {}).get('time') or [])
+            aifs_end = parse_time(ens_times[-1]) if ens_times else start
+            city['checks']['aifs_chart_span'] = audit_long(
+                city['aifs_chart_hourly'], start, aifs_end)
             chart_checks.append(city['checks']['chart_28d']['ready'])
         if key in ('tokyo_minato', 'takamatsu'):
             parts = [jma_hourly_tides(root['sources'][f'{key}/hourly_tide_{year}'], year, start, end,
