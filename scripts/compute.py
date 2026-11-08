@@ -594,10 +594,38 @@ def compute_city(city, start, end):
                 'observatory forecast contradicts them. The GFS frost limb is its '
                 '0–10 cm soil-layer temperature, NOT equivalent to the IFS surface '
                 '(skin) temperature: contextual only, never a validation of the frost flag.'}
-    # Prevailing wind direction: the speed-weighted circular mean of the
-    # hourly directions (the resultant direction). A resultant ratio
-    # below 0.05 means the flow is variable and no prevailing direction
-    # is claimed.
+    # Prevailing wind direction is the MODAL direction (review fix,
+    # 2026-11-08): the most frequently occurring 16-point sector over
+    # the window's hourly directions — NOT the vector-mean (resultant)
+    # direction, which is a different statistic and is kept separately
+    # below. Ties break toward the tied sector with the greatest summed
+    # wind speed. When the modal sector holds under a quarter of the
+    # valid hours the flow is VARIABLE （変動） and no prevailing sector
+    # is claimed; with no valid direction hours the state is missing.
+    _sector_count = {}
+    _sector_speed = {}
+    for _t, _deg in directions.items():
+        if _deg is None:
+            continue
+        _sec = compass16(_deg)
+        _sector_count[_sec] = _sector_count.get(_sec, 0) + 1
+        _sector_speed[_sec] = _sector_speed.get(_sec, 0.0) + (wind.get(_t) or 0.0)
+    _valid_dirs = sum(_sector_count.values())
+    prevailing_compass = None
+    prevailing_share = None
+    prevailing_state = 'missing'
+    if _valid_dirs:
+        _top = max(_sector_count.values())
+        _tied = [s for s, n in _sector_count.items() if n == _top]
+        _modal = max(_tied, key=lambda s: _sector_speed.get(s, 0.0))
+        prevailing_share = round(100.0 * _top / _valid_dirs, 1)
+        if _top / _valid_dirs >= 0.25:
+            prevailing_compass = _modal
+            prevailing_state = 'ok'
+        else:
+            prevailing_state = 'variable'
+    # Resultant (vector-mean) direction — a separate statistic, never
+    # labelled prevailing.
     _sx = _sy = _sw = 0.0
     for _t, _deg in directions.items():
         _s = wind.get(_t)
@@ -607,9 +635,9 @@ def compute_city(city, start, end):
         _sx += _s * math.sin(_r)
         _sy += _s * math.cos(_r)
         _sw += _s
-    prevailing_deg = None
+    resultant_deg = None
     if _sw > 0 and math.hypot(_sx, _sy) / _sw >= 0.05:
-        prevailing_deg = round((math.degrees(math.atan2(_sx, _sy)) + 360) % 360, 1)
+        resultant_deg = round((math.degrees(math.atan2(_sx, _sy)) + 360) % 360, 1)
     result['report_digest'] = {
         'dominant_weather_code': Counter(codes).most_common(1)[0][0] if codes else None,
         'humidity_mean': round(sum(humidity) / len(humidity), 1) if len(humidity) == 24 else None,
@@ -621,8 +649,10 @@ def compute_city(city, start, end):
         'wbgt_band': wbgt_band,
         'wind_speed_mean_ms': round(sum(wind.values()) / len(wind), 2) if len(wind) == 24 else None,
         'wind_speed_max_ms': round(max(wind.values()), 2) if len(wind) == 24 else None,
-        'wind_prevailing_direction_deg': prevailing_deg,
-        'wind_prevailing_compass': compass16(prevailing_deg) if prevailing_deg is not None else None,
+        'wind_prevailing_compass': prevailing_compass,
+        'wind_prevailing_share_pct': prevailing_share,
+        'wind_prevailing_state': prevailing_state,
+        'wind_resultant_compass': compass16(resultant_deg) if resultant_deg is not None else None,
         'wind_gust_max_ms': result['wind_gusts_10m'].get('maximum') if result['wind_gusts_10m'].get('ready') else None,
         'wind_gust_max_time_utc': result['wind_gusts_10m'].get('time_of_maximum_utc') if result['wind_gusts_10m'].get('ready') else None,
         'hazard_flags': hazard_flags(

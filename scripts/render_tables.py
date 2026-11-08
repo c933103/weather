@@ -61,6 +61,10 @@ def _heat_cold(c, digest, japan):
     wbgt_min = wbgt.get('minimum')
     wbgt_text = (f'{fmt(wbgt_min)}~{fmt(wbgt_max)} {band}' if wbgt_min is not None
                  else f'{fmt(wbgt_max)} {band}')
+    if japan and chill_ok and wbgt_max is not None and band:
+        # Both valid: report BOTH (review fix, 2026-11-08) — selecting
+        # one hides the other.
+        return f"{wbgt_text}・風冷 {fmt(chill['minimum'])}"
     if wbgt_max is not None and wbgt_max >= 21 and band:
         return wbgt_text
     if chill_ok:
@@ -117,8 +121,16 @@ def _wind(c, digest):
     mean = digest.get('wind_speed_mean_ms')
     if mean is not None:
         parts.append(f'平均{_ms(mean)}')
+    # Prevailing direction states are distinct: a named sector, 変動
+    # (variable — data present but no dominant sector), or ― (missing).
     prev = digest.get('wind_prevailing_compass')
-    parts.append(f'卓越{prev}' if prev else '卓越―')
+    state = digest.get('wind_prevailing_state')
+    if prev:
+        parts.append(f'卓越{prev}')
+    elif state == 'variable':
+        parts.append('卓越変動')
+    else:
+        parts.append('卓越―')
     return ' '.join(parts)
 
 
@@ -482,7 +494,7 @@ def _warning_threat(track, radii=None, max_wave_ft=None):
         text = (f"対象地域への接近なし"
                 f"（最接近 {per_area[0][1]} 約{_round10(per_area[0][0])}km）")
         if any(p[4] for p in per_area):
-            text += '（ただし暴風域の到達あり）'
+            text += '（ただし34kt強風域の到達あり）'
         return text
     dist, label, when, wind, gale = close[0]
     head = f"{label} 約{_round10(dist)}km"
@@ -491,11 +503,11 @@ def _warning_threat(track, radii=None, max_wave_ft=None):
     if wind is not None:
         head += f"・{int(round(wind))}kt級"
     if gale:
-        head += '・暴風域到達'
+        head += '・34kt強風域到達'
     if len(close) > 1:
         head += f"・{close[1][1]} 約{_round10(close[1][0])}km"
         if close[1][4] and not gale:
-            head += '（暴風域到達）'
+            head += '（34kt強風域到達）'
     if max_wave_ft is not None and max_wave_ft >= 15:
         head += f'・高波{max_wave_ft}ft'
     return head

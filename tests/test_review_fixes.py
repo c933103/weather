@@ -257,9 +257,33 @@ class RenderCellTests(unittest.TestCase):
         got = compute_city(make_city(), START, END)['report_digest']
         self.assertEqual(got['wind_speed_max_ms'], 4.0)
         self.assertEqual(got['wind_speed_mean_ms'], 4.0)
-        # Constant 300-degree flow: the resultant direction is 300.
-        self.assertEqual(got['wind_prevailing_direction_deg'], 300.0)
+        # Constant 300-degree flow: the MODAL sector is compass16(300)
+        # with a 100% share; the resultant is kept as its own statistic.
         self.assertEqual(got['wind_prevailing_compass'], compass16(300.0))
+        self.assertEqual(got['wind_prevailing_share_pct'], 100.0)
+        self.assertEqual(got['wind_prevailing_state'], 'ok')
+        self.assertEqual(got['wind_resultant_compass'], compass16(300.0))
+
+    def test_prevailing_variable_when_no_sector_dominates(self):
+        city = make_city()
+        hours = city['hourly']
+        n = len(hours['time'])
+        hours['wind_direction_10m'] = [(i * 22.5) % 360 for i in range(n)]
+        got = compute_city(city, START, END)['report_digest']
+        self.assertEqual(got['wind_prevailing_state'], 'variable')
+        self.assertIsNone(got['wind_prevailing_compass'])
+        cell = rt._wind({'wind_speed_10m': {'maximum': 4.0}}, got)
+        self.assertIn('卓越変動', cell)
+
+    def test_heat_cold_japan_shows_both_when_both_valid(self):
+        c = {'wbgt': {'maximum': 17.5, 'minimum': 10.0},
+             'wind_chill': {'status': 'applicable', 'minimum': 5.6}}
+        cell = rt._heat_cold(c, {'wbgt_band': 'ほぼ安全'}, True)
+        self.assertIn('10~17.5 ほぼ安全', cell)
+        self.assertIn('風冷 5.6', cell)
+        # Non-Japan keeps the settled priority (WBGT only from 21).
+        cell2 = rt._heat_cold(c, {'wbgt_band': 'ほぼ安全'}, False)
+        self.assertEqual(cell2, '風冷 5.6')
 
     def test_wbgt_cell_shows_the_range(self):
         c = {'wbgt': {'maximum': 26.0, 'minimum': 18.0},
