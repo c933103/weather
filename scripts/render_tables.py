@@ -185,7 +185,7 @@ def _tokki_floor(c, digest):
     if fog == 'fog':
         tokens.append('霧')
     elif fog == 'mist':
-        tokens.append('もや')
+        tokens.append('靄')  # mist token in kanji (user, 2026-11-08; JMA writes もや in kana)
     if (c.get('urban_inundation') or {}).get('screen_positive'):
         tokens.append('内水注意')
     snow = (c.get('snowfall') or {}).get('total')

@@ -275,7 +275,7 @@ class RenderCellTests(unittest.TestCase):
         self.assertNotIn('霧', cell)
         self.assertIn('内水注意', cell)
         c['fog'] = {'classification': 'mist'}
-        self.assertIn('もや', rt._tokki_floor(c, {}))
+        self.assertIn('靄', rt._tokki_floor(c, {}))
 
     def test_tide_row_uses_official_events(self):
         c = {'coastal_assessment': {'official_tide': {
