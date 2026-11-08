@@ -621,14 +621,15 @@ def _monsoon_analysis(cw, digest, cities=None):
         else:
             parts.append('シベリア高気圧に大きな変化なし')
     # Per-city limb (2026-11-08): the four cities' own surge indicators,
-    # not only the UB grid — a city is named when its 24h temperature
-    # fall AND pressure rise both pass the surge thresholds.
+    # not only the UB grid — a city is named when a single 24-hour window
+    # carries both the temperature fall and the pressure rise past the
+    # surge thresholds (joint event, review fix 2026-11-09).
     digests = [(label, ((cities or {}).get(name) or {}).get('monsoon') or {})
                for name, label in CITY_ORDER]
     surged = [label for label, d in digests if d.get('surge_signature')]
     if surged:
         parts.append(f"{'・'.join(surged)}に寒気サージの指標あり"
-                     '（24h低下・昇圧がともに閾値超過）')
+                     '（同一24h窓で低下・昇圧がともに閾値超過）')
     elif any(d.get('ready') for _, d in digests):
         parts.append('4市に寒気サージの指標なし')
     return '。'.join(parts)
@@ -653,7 +654,10 @@ def _monsoon_values(cw, digest, cities=None):
                f"（{m.get('drop_end_local')}）"
                f"・昇圧 {m['max_24h_pressure_rise_hpa']:+.1f}hPa"
                f"・北寄り最大 {fmt(m.get('northerly_max_ms'))}m/s")
-        if m.get('surge_signature'):
+        _ev = m.get('surge_event')
+        if _ev:
+            seg += f"（サージ指標 {_ev.get('start_local')}→{_ev.get('end_local')}）"
+        elif m.get('surge_signature'):
             seg += '（サージ指標）'
         segs.append(seg)
     if segs:

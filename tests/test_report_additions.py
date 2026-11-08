@@ -110,7 +110,7 @@ class ConfidenceTests(unittest.TestCase):
         self.assertEqual(grades['2026-11-09']['grade'], '低')
         beyond = grades['2026-11-18']
         self.assertEqual(beyond['basis'], 'outside_ensemble_coverage')
-        self.assertEqual(beyond['grade'], '低')
+        self.assertEqual(beyond['grade'], '―')
 
     def test_confidence_missing_ensemble(self):
         self.assertEqual(chart_confidence_for_city({'timezone': 'Asia/Tokyo'}, dt.date(2026, 11, 8)), {})

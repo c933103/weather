@@ -220,8 +220,10 @@ def chart_confidence_for_city(city, day0, days=16, ensemble_key='temperature_ens
 
     Returns {} when the city carries no such ensemble (older bundles),
     so callers can fall back to an explicit 'not evaluated' marker instead of
-    inventing a grade. Dates beyond the ensemble's native span are graded 低
-    with basis 'outside_ensemble_coverage'.
+    inventing a grade. Dates beyond the ensemble's native span are graded
+    '―' (not assessed) with basis 'outside_ensemble_coverage' — an
+    unmeasured day must not carry the same label as a day that was
+    measured and found low-confidence (review fix, 2026-11-09).
     """
     block = city.get(ensemble_key) or {}
     hourly = block.get('hourly') or {}
@@ -246,7 +248,7 @@ def chart_confidence_for_city(city, day0, days=16, ensemble_key='temperature_ens
                                        'spread_c': round(spread, 2),
                                        'members': len(maxima), 'basis': 'ensemble_spread'}
         else:
-            result[day.isoformat()] = {'grade': '低', 'spread_c': None,
+            result[day.isoformat()] = {'grade': '―', 'spread_c': None,
                                        'members': len(maxima),
                                        'basis': 'outside_ensemble_coverage'}
     return result
@@ -520,6 +522,7 @@ MONSOON_SECTORS = {'Hong Kong': (300, 100), 'Taipei': (300, 100),
                    'Tokyo Minato Ward': (260, 80), 'Takamatsu': (260, 80)}
 SURGE_DROP_C = -5.0
 SURGE_RISE_HPA = 5.0
+CALM_WIND_MS = 0.5  # WMO calm threshold: below it a direction is not meaningful
 
 
 def _in_sector(deg, sector):
@@ -557,6 +560,21 @@ def monsoon_digest(city, name, start):
                 r = press[later] - v
                 if rise is None or r > rise[0]:
                     rise = (r, later)
+        # Surge event (review fix, 2026-11-09): the temperature fall and
+        # the pressure rise must occur over the SAME 24-hour window. The
+        # independent maxima above can sit days apart and do not describe
+        # one event. Among jointly qualifying windows take the strongest
+        # fall (ties: the strongest rise); the event's timing is recorded.
+        event = None
+        for stamp, v in temps.items():
+            later = stamp + dt.timedelta(hours=24)
+            if later not in temps or stamp not in press or later not in press:
+                continue
+            d = temps[later] - v
+            r = press[later] - press[stamp]
+            if d <= SURGE_DROP_C and r >= SURGE_RISE_HPA:
+                if event is None or d < event[0] or (d == event[0] and r > event[1]):
+                    event = (d, r, stamp, later)
         sector = MONSOON_SECTORS.get(name, (300, 100))
         north = None
         for stamp, deg in series['wind_direction_10m'].items():
@@ -578,9 +596,12 @@ def monsoon_digest(city, name, start):
                'northerly_gust_ms': (round(north[1], 1)
                                      if north and north[1] is not None else None),
                'northerly_at_local': _local(north[2]) if north else None,
-               'surge_signature': bool(drop and rise
-                                       and drop[0] <= SURGE_DROP_C
-                                       and rise[0] >= SURGE_RISE_HPA)}
+               'surge_signature': event is not None,
+               'surge_event': ({'start_local': _local(event[2]),
+                                'end_local': _local(event[3]),
+                                'temp_drop_c': round(event[0], 1),
+                                'pressure_rise_hpa': round(event[1], 1)}
+                               if event else None)}
     return out
 
 
@@ -679,16 +700,24 @@ def compute_city(city, start, end):
     # below. Ties break toward the tied sector with the greatest summed
     # wind speed. When the modal sector holds under a quarter of the
     # valid hours the flow is VARIABLE （変動） and no prevailing sector
-    # is claimed; with no valid direction hours the state is missing.
+    # is claimed; with no non-calm valid hours the state is missing.
+    # Calm hours (speed < 0.5 m/s) never vote: a calm hour's recorded
+    # direction is not physically meaningful (review fix, 2026-11-09).
     _sector_count = {}
     _sector_speed = {}
+    _calm_hours = 0
     for _t, _deg in directions.items():
+        _spd = wind.get(_t)
+        if _spd is not None and _spd < CALM_WIND_MS:
+            _calm_hours += 1
+            continue
         if _deg is None:
             continue
         _sec = compass16(_deg)
         _sector_count[_sec] = _sector_count.get(_sec, 0) + 1
         _sector_speed[_sec] = _sector_speed.get(_sec, 0.0) + (wind.get(_t) or 0.0)
     _valid_dirs = sum(_sector_count.values())
+    _calm_share = (round(100.0 * _calm_hours / len(wind), 1) if wind else None)
     prevailing_compass = None
     prevailing_share = None
     prevailing_state = 'missing'
@@ -730,6 +759,8 @@ def compute_city(city, start, end):
         'wind_prevailing_compass': prevailing_compass,
         'wind_prevailing_share_pct': prevailing_share,
         'wind_prevailing_state': prevailing_state,
+        'wind_calm_hours': _calm_hours,
+        'wind_calm_share_pct': _calm_share,
         'wind_resultant_compass': compass16(resultant_deg) if resultant_deg is not None else None,
         'wind_gust_max_ms': result['wind_gusts_10m'].get('maximum') if result['wind_gusts_10m'].get('ready') else None,
         'wind_gust_max_time_utc': result['wind_gusts_10m'].get('time_of_maximum_utc') if result['wind_gusts_10m'].get('ready') else None,

@@ -14,8 +14,8 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from compute import (coastal_assessment, compass16, compute_city, parse_space_weather,
-                     _track_assessment)
+from compute import (coastal_assessment, compass16, compute_city, monsoon_digest,
+                     parse_space_weather, _track_assessment)
 from validate import build_validation, check_products, check_products
 import render_tables as rt
 from chart_data import build_chart_data, extrema_by_date, extrema_runs
@@ -477,6 +477,79 @@ def _synthetic_aifs_raw():
             'aifs_member_extrema': mext,
             'ec46_daily': {}}
     return {'target_date_jst': '2026-11-08', 'cities': cities}
+
+
+class MonsoonSurgeTests(unittest.TestCase):
+    """Review fix (2026-11-09): the surge signature is a JOINT 24-hour
+    event — the temperature fall and the pressure rise must occur over
+    the same window; independent 7-day maxima prove nothing."""
+
+    def _city(self, temp_fn, press_fn, hours=192):
+        start = dt.datetime(2026, 1, 15, 21, 0, tzinfo=dt.timezone.utc)
+        stamps = [start + dt.timedelta(hours=i) for i in range(hours)]
+        hourly = {'time': [t.isoformat() for t in stamps],
+                  'temperature_2m': [temp_fn(i) for i in range(hours)],
+                  'pressure_msl': [press_fn(i) for i in range(hours)],
+                  'wind_speed_10m': [3.0] * hours,
+                  'wind_direction_10m': [0.0] * hours,
+                  'wind_gusts_10m': [5.0] * hours}
+        return {'timezone': 'Asia/Tokyo', 'hourly': hourly}, start
+
+    def test_disjoint_fall_and_rise_are_not_an_event(self):
+        temp = lambda i: 20.0 if i < 24 else (14.0 if i >= 48 else 20.0 - 6.0 * (i - 24) / 24)
+        press = lambda i: 1000.0 if i < 120 else (1006.0 if i >= 144 else 1000.0 + 6.0 * (i - 120) / 24)
+        city, start = self._city(temp, press)
+        got = monsoon_digest(city, 'Takamatsu', start)
+        self.assertTrue(got['ready'])
+        self.assertEqual(got['max_24h_temp_drop_c'], -6.0)
+        self.assertEqual(got['max_24h_pressure_rise_hpa'], 6.0)
+        self.assertFalse(got['surge_signature'])
+        self.assertIsNone(got['surge_event'])
+
+    def test_joint_window_is_an_event_with_timing(self):
+        temp = lambda i: 20.0 if i < 48 else (14.0 if i >= 72 else 20.0 - 6.0 * (i - 48) / 24)
+        press = lambda i: 1000.0 if i < 48 else (1006.0 if i >= 72 else 1000.0 + 6.0 * (i - 48) / 24)
+        city, start = self._city(temp, press)
+        got = monsoon_digest(city, 'Takamatsu', start)
+        self.assertTrue(got['surge_signature'])
+        ev = got['surge_event']
+        self.assertEqual(ev['temp_drop_c'], -6.0)
+        self.assertEqual(ev['pressure_rise_hpa'], 6.0)
+        self.assertEqual(ev['start_local'], '01-18 06:00')
+        self.assertEqual(ev['end_local'], '01-19 06:00')
+
+
+class PrevailingCalmTests(unittest.TestCase):
+    """Review fix (2026-11-09): calm hours (< 0.5 m/s) have no meaningful
+    direction and never vote in the modal sector; they are counted
+    separately and the 25% threshold applies to non-calm hours."""
+
+    def _window_speeds(self, city, speeds):
+        hours = city['hourly']
+        idx = [i for i, t in enumerate(hours['time'])
+               if START <= dt.datetime.fromisoformat(t) < END]
+        self.assertEqual(len(idx), 24)
+        for k, i in enumerate(idx):
+            hours['wind_speed_10m'][i] = speeds[k]
+
+    def test_calm_hours_do_not_vote(self):
+        city = make_city()
+        self._window_speeds(city, [0.2] * 20 + [5.0] * 4)
+        got = compute_city(city, START, END)['report_digest']
+        self.assertEqual(got['wind_calm_hours'], 20)
+        self.assertEqual(got['wind_calm_share_pct'], 83.3)
+        self.assertEqual(got['wind_prevailing_state'], 'ok')
+        self.assertEqual(got['wind_prevailing_compass'], compass16(300.0))
+        self.assertEqual(got['wind_prevailing_share_pct'], 100.0)
+
+    def test_all_calm_is_missing_not_a_sector(self):
+        city = make_city()
+        self._window_speeds(city, [0.2] * 24)
+        got = compute_city(city, START, END)['report_digest']
+        self.assertEqual(got['wind_calm_hours'], 24)
+        self.assertEqual(got['wind_calm_share_pct'], 100.0)
+        self.assertEqual(got['wind_prevailing_state'], 'missing')
+        self.assertIsNone(got['wind_prevailing_compass'])
 
 
 if __name__ == '__main__':
