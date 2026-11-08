@@ -1,6 +1,6 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-08T02:19:52.342813+00:00",
+  "generated_at_utc": "2026-11-08T02:45:11.290640+00:00",
   "target_date_jst": "2026-11-09",
   "cities": {
     "Hong Kong": {
@@ -344,7 +344,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 279088 bytes"
+      "detail": "PNG signature ok, 279302 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
