@@ -404,9 +404,13 @@ def _parse_warning(text, anchor):
                       int(w2.group(1)) if w2 else None))
     track = [p for p in track if p[0] is not None]
     track.sort(key=lambda p: p[0])
-    # Wind radii per track point (maximum over quadrants, nautical miles)
-    # and the analysis maximum significant wave height: the impact fields
-    # the centre distance alone cannot express.
+    # Wind radii per track point, PER QUADRANT (nautical miles), and the
+    # analysis maximum significant wave height: the impact fields the
+    # centre distance alone cannot express. The 34 kt field is NOT
+    # circular — collapsing the quadrants to their maximum overstates
+    # the reach toward an area facing a weaker quadrant (review fix,
+    # 2026-11-08) — so each block keeps its NE/SE/SW/NW values; a block
+    # without quadrant labels is kept as one isotropic value ('ALL').
     marks = [pos.start()] + [fm.start() for fm in _FCST_RE.finditer(text)]
     radii = []
     for i, mstart in enumerate(marks):
@@ -416,9 +420,19 @@ def _parse_warning(text, anchor):
         for block in re.finditer(
                 r'RADIUS OF (\d+) KT WINDS - (.*?)(?=RADIUS OF|FORECAST WINDS|'
                 r'MAXIMUM SIGNIFICANT|REMARKS|\Z)', segment, re.S):
-            values = [int(v) for v in re.findall(r'(\d+) NM', block.group(2))]
-            if values:
-                entry[int(block.group(1))] = max(values)
+            body = block.group(2)
+            pairs = re.findall(
+                r'(\d+)\s*NM\s+(NORTHEAST|SOUTHEAST|SOUTHWEST|NORTHWEST)',
+                body)
+            if pairs:
+                entry[int(block.group(1))] = {
+                    {'NORTHEAST': 'NE', 'SOUTHEAST': 'SE',
+                     'SOUTHWEST': 'SW', 'NORTHWEST': 'NW'}[q]: int(v)
+                    for v, q in pairs}
+            else:
+                values = [int(v) for v in re.findall(r'(\d+) NM', body)]
+                if values:
+                    entry[int(block.group(1))] = {'ALL': max(values)}
         radii.append(entry)
     wave = re.search(r'MAXIMUM\s+SIGNIFICANT\s+WAVE\s+HEIGHT\s+AT\s+\d+Z\s+IS\s+(\d+)\s+FEET', text)
     return {'valid': valid, 'lat': lat, 'lon': lon, 'max_kt': max_kt,
@@ -461,14 +475,35 @@ def _round10(value):
     return int(round(value / 10.0)) * 10
 
 
+def _bearing_deg(la, lo, alat, alon):
+    """Initial bearing from a storm centre to an area point, 0–360°."""
+    p1, p2 = math.radians(la), math.radians(alat)
+    dl = math.radians(alon - lo)
+    x = math.sin(dl) * math.cos(p2)
+    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return (math.degrees(math.atan2(x, y)) + 360) % 360
+
+
 def _gale_reach(track, radii, alat, alon):
     """True when any forecast point's 34 kt wind radius reaches the area:
-    the wind impact outcome, assessed separately from the centre track."""
+    the wind impact outcome, assessed separately from the centre track.
+    The radius tested is the one for the quadrant FACING the area at
+    that point (bearing from the centre), never the maximum over
+    quadrants treated as a circle; an unlabelled radius ('ALL', or the
+    legacy plain-number shape) is isotropic by construction."""
     if not radii:
         return False
     for (_t, la, lo, _w), entry in zip(track, radii):
         r34 = (entry or {}).get(34)
-        if r34 and _haversine_km(la, lo, alat, alon) <= r34 * 1.852:
+        if not r34:
+            continue
+        if isinstance(r34, (int, float)):
+            r_nm = r34
+        else:
+            quad = ('NE', 'SE', 'SW', 'NW')[
+                int(_bearing_deg(la, lo, alat, alon) // 90) % 4]
+            r_nm = r34.get(quad, r34.get('ALL'))
+        if r_nm and _haversine_km(la, lo, alat, alon) <= r_nm * 1.852:
             return True
     return False
 

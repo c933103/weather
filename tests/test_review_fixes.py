@@ -222,8 +222,14 @@ class WarningImpactTests(unittest.TestCase):
         anchor = dt.datetime(2026, 11, 7, 21, 0, tzinfo=dt.timezone.utc)
         warn = rt._parse_warning(WARNING_EXCERPT, anchor)
         self.assertIsNotNone(warn)
-        self.assertEqual(warn['track_radii'][0][34], 100)
-        self.assertEqual(warn['track_radii'][0][50], 40)
+        # Radii are kept PER QUADRANT (review fix, 2026-11-08): the 34 kt
+        # field is not circular, so no max-over-quadrants collapse.
+        self.assertEqual(warn['track_radii'][0][34],
+                         {'NE': 100, 'SE': 60, 'SW': 60, 'NW': 90})
+        self.assertEqual(warn['track_radii'][0][50],
+                         {'NE': 40, 'SE': 20, 'SW': 0, 'NW': 35})
+        self.assertEqual(warn['track_radii'][1][34],
+                         {'NE': 120, 'SE': 120, 'SW': 120, 'NW': 120})
         self.assertEqual(warn['max_wave_ft'], 24)
 
     def test_gale_reach_is_a_separate_outcome(self):
@@ -236,6 +242,18 @@ class WarningImpactTests(unittest.TestCase):
         radii = [{34: 300}]
         self.assertTrue(rt._gale_reach(track, radii, 27.1, 142.2))
         self.assertFalse(rt._gale_reach(track, [{34: 10}], 27.1, 142.2))
+
+    def test_gale_reach_uses_the_facing_quadrant(self):
+        # Same centre, same distance (~140 km): an area NE of the centre
+        # is reached through the 200 NM NE radius, while an area SW of
+        # the centre at the same distance is NOT reached through the
+        # 30 NM SW radius. Under the old max-over-quadrants circle both
+        # would read as reached.
+        track = [(dt.datetime(2026, 11, 10, 18, 0, tzinfo=dt.timezone.utc),
+                  26.1, 142.1, 70)]
+        radii = [{34: {'NE': 200, 'SE': 30, 'SW': 30, 'NW': 30}}]
+        self.assertTrue(rt._gale_reach(track, radii, 27.05, 143.05))
+        self.assertFalse(rt._gale_reach(track, radii, 25.15, 141.15))
 
 
 class RenderCellTests(unittest.TestCase):
