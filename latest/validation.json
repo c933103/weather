@@ -1,6 +1,6 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-08T02:12:42.671559+00:00",
+  "generated_at_utc": "2026-11-08T02:19:52.342813+00:00",
   "target_date_jst": "2026-11-09",
   "cities": {
     "Hong Kong": {
@@ -331,9 +331,7 @@
       "jma/kagawa_warnings: stale official issue timestamp; not current warning evidence",
       "ecmwf/cyclone_product: request failed (404)"
     ],
-    "products_invalid": [
-      "table3"
-    ]
+    "products_invalid": []
   },
   "products": {
     "chart": {
@@ -354,19 +352,19 @@
     },
     "table1": {
       "status": "ok",
-      "detail": "9 pipe rows; city headers present; no <br>"
+      "detail": "9 pipe rows; shape ok; no <br>"
     },
     "table2": {
       "status": "ok",
-      "detail": "7 pipe rows; city headers present; no <br>"
+      "detail": "7 pipe rows; shape ok; no <br>"
     },
     "table3": {
-      "status": "invalid",
-      "detail": "table shape check failed"
+      "status": "ok",
+      "detail": "3 pipe rows; shape ok; no <br>"
     },
     "table4": {
       "status": "ok",
-      "detail": "7 pipe rows; city headers present; no <br>"
+      "detail": "7 pipe rows; shape ok; no <br>"
     }
   }
 }
