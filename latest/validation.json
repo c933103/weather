@@ -1,0 +1,372 @@
+{
+  "schema": "east_asia_weather_validation_v1",
+  "generated_at_utc": "2026-11-08T02:12:42.671559+00:00",
+  "target_date_jst": "2026-11-09",
+  "cities": {
+    "Hong Kong": {
+      "temperature": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "apparent_temperature": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "humidity": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "pressure": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "uv": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "dust": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "wbgt": {
+        "status": "ok",
+        "detail": "Liljegren calculation on complete instantaneous inputs"
+      },
+      "wind": {
+        "status": "ok",
+        "detail": "sustained and gust series complete; mean, maximum and gust maximum are distinct statistics"
+      },
+      "precipitation": {
+        "status": "ok",
+        "detail": "(start,end] preceding-hour accumulations, 24/24"
+      },
+      "snow": {
+        "status": "ok",
+        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
+      },
+      "aqi": {
+        "status": "ok",
+        "detail": "leading and second pollutants are read at the worst-AQI hour itself"
+      },
+      "fog": {
+        "status": "ok",
+        "detail": "classification: none"
+      },
+      "frost": {
+        "status": "ok",
+        "detail": "IFS ground-surface (skin) temperature; the GFS 0–10 cm soil limb is non-equivalent and contextual only"
+      },
+      "storm_surge": {
+        "status": "caution",
+        "detail": "no same-datum comparison available for this city: surge residual stands alone; any storm-surge flag needs an official product"
+      },
+      "tide": {
+        "status": "ok",
+        "detail": "official tide events on their own stated datum (timing and heights; never mixed with STOFS levels)"
+      },
+      "urban_inundation": {
+        "status": "ok",
+        "detail": "rainfall-rate screen negative; a negative screen — like an empty warning feed — does not establish safety"
+      },
+      "pollen": {
+        "status": "missing",
+        "detail": "no pollen block for this city (CAMS pollen is Europe-only: no claim either way)"
+      }
+    },
+    "Taipei": {
+      "temperature": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "apparent_temperature": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "humidity": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "pressure": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "uv": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "dust": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "wbgt": {
+        "status": "ok",
+        "detail": "Liljegren calculation on complete instantaneous inputs"
+      },
+      "wind": {
+        "status": "ok",
+        "detail": "sustained and gust series complete; mean, maximum and gust maximum are distinct statistics"
+      },
+      "precipitation": {
+        "status": "ok",
+        "detail": "(start,end] preceding-hour accumulations, 24/24"
+      },
+      "snow": {
+        "status": "ok",
+        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
+      },
+      "aqi": {
+        "status": "ok",
+        "detail": "leading and second pollutants are read at the worst-AQI hour itself"
+      },
+      "fog": {
+        "status": "ok",
+        "detail": "classification: none"
+      },
+      "frost": {
+        "status": "ok",
+        "detail": "IFS ground-surface (skin) temperature; the GFS 0–10 cm soil limb is non-equivalent and contextual only"
+      },
+      "storm_surge": {
+        "status": "ok",
+        "detail": "STOFS combined level compared with the STOFS model's own astronomical tide (same model datum); surge residual reported separately; official tide tables never subtracted"
+      },
+      "tide": {
+        "status": "ok",
+        "detail": "official tide events on their own stated datum (timing and heights; never mixed with STOFS levels)"
+      },
+      "urban_inundation": {
+        "status": "ok",
+        "detail": "rainfall-rate screen negative; a negative screen — like an empty warning feed — does not establish safety"
+      },
+      "pollen": {
+        "status": "missing",
+        "detail": "no pollen block for this city (CAMS pollen is Europe-only: no claim either way)"
+      }
+    },
+    "Tokyo Minato Ward": {
+      "temperature": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "apparent_temperature": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "humidity": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "pressure": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "uv": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "dust": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "wbgt": {
+        "status": "ok",
+        "detail": "Liljegren calculation on complete instantaneous inputs"
+      },
+      "wind": {
+        "status": "ok",
+        "detail": "sustained and gust series complete; mean, maximum and gust maximum are distinct statistics"
+      },
+      "precipitation": {
+        "status": "ok",
+        "detail": "(start,end] preceding-hour accumulations, 24/24"
+      },
+      "snow": {
+        "status": "ok",
+        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
+      },
+      "aqi": {
+        "status": "ok",
+        "detail": "leading and second pollutants are read at the worst-AQI hour itself"
+      },
+      "fog": {
+        "status": "ok",
+        "detail": "classification: mist"
+      },
+      "frost": {
+        "status": "ok",
+        "detail": "IFS ground-surface (skin) temperature; the GFS 0–10 cm soil limb is non-equivalent and contextual only"
+      },
+      "storm_surge": {
+        "status": "ok",
+        "detail": "STOFS combined level compared with the STOFS model's own astronomical tide (same model datum); surge residual reported separately; official tide tables never subtracted"
+      },
+      "tide": {
+        "status": "ok",
+        "detail": "official tide events on their own stated datum (timing and heights; never mixed with STOFS levels)"
+      },
+      "urban_inundation": {
+        "status": "ok",
+        "detail": "rainfall-rate screen negative; a negative screen — like an empty warning feed — does not establish safety"
+      },
+      "pollen": {
+        "status": "caution",
+        "detail": "pollen state (in season / out of season / not yet published / unavailable) must be read from the source itself; none of these states is a zero"
+      }
+    },
+    "Takamatsu": {
+      "temperature": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "apparent_temperature": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "humidity": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "pressure": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "uv": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "dust": {
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
+      },
+      "wbgt": {
+        "status": "ok",
+        "detail": "Liljegren calculation on complete instantaneous inputs"
+      },
+      "wind": {
+        "status": "ok",
+        "detail": "sustained and gust series complete; mean, maximum and gust maximum are distinct statistics"
+      },
+      "precipitation": {
+        "status": "ok",
+        "detail": "(start,end] preceding-hour accumulations, 24/24"
+      },
+      "snow": {
+        "status": "ok",
+        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
+      },
+      "aqi": {
+        "status": "ok",
+        "detail": "leading and second pollutants are read at the worst-AQI hour itself"
+      },
+      "fog": {
+        "status": "ok",
+        "detail": "classification: mist"
+      },
+      "frost": {
+        "status": "ok",
+        "detail": "IFS ground-surface (skin) temperature; the GFS 0–10 cm soil limb is non-equivalent and contextual only"
+      },
+      "storm_surge": {
+        "status": "ok",
+        "detail": "STOFS combined level compared with the STOFS model's own astronomical tide (same model datum); surge residual reported separately; official tide tables never subtracted"
+      },
+      "tide": {
+        "status": "ok",
+        "detail": "official tide events on their own stated datum (timing and heights; never mixed with STOFS levels)"
+      },
+      "urban_inundation": {
+        "status": "ok",
+        "detail": "rainfall-rate screen negative; a negative screen — like an empty warning feed — does not establish safety"
+      },
+      "pollen": {
+        "status": "caution",
+        "detail": "pollen state (in season / out of season / not yet published / unavailable) must be read from the source itself; none of these states is a zero"
+      }
+    }
+  },
+  "hazards": {
+    "cyclone_verification": {
+      "status": "ok",
+      "detail": "independent-model samples retrieved and coherent with the warning positions; centres are NOT identified from point samples, so the track is never called confirmed"
+    },
+    "space_weather": {
+      "status": "ok",
+      "detail": "SWPC and NICT sources current; R/S/G scales are reported as distinct quantities"
+    }
+  },
+  "coverage": {
+    "standing_limitations": [
+      {
+        "id": "glofas_reach_validation",
+        "text": "GloFAS river reaches and return-period thresholds are unvalidated: no riverine flood flag is derived from GloFAS in either the bundle path or the fallback path."
+      },
+      {
+        "id": "urban_inundation_validation",
+        "text": "Urban (pluvial) inundation has no validated local model: rainfall-rate screening only, kept distinct from river flooding."
+      },
+      {
+        "id": "weathernews_pollen_applicability",
+        "text": "Weathernews pollen numeric arrays are retrieved, but operational applicability is unverified while the public pages are closed."
+      },
+      {
+        "id": "ecmwf_opencharts_endpoint",
+        "text": "The ECMWF OpenCharts cyclone-product endpoint returns 404 at every walked-back base time (endpoint looks retired); GFS / ECMWF open-data samples are the working alternative."
+      },
+      {
+        "id": "regional_grid_coverage",
+        "text": "The regional grids are sparse 3x3 samples: they cannot exclude a storm passing between sampling points, and no verdict of safety rests on them alone."
+      },
+      {
+        "id": "stofs_datum",
+        "text": "STOFS levels sit on the NOAA model datum: combined levels are compared only with the STOFS model's own astronomical tide, never with official tide-table datums."
+      }
+    ],
+    "new_source_failures": [],
+    "quality_state": "partial",
+    "quality_reasons": [
+      "GloFAS grids have not been matched to applicable river reaches and flood thresholds.",
+      "Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.",
+      "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
+      "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
+      "jma/kagawa_warnings: stale official issue timestamp; not current warning evidence",
+      "ecmwf/cyclone_product: request failed (404)"
+    ],
+    "products_invalid": [
+      "table3"
+    ]
+  },
+  "products": {
+    "chart": {
+      "status": "ok",
+      "detail": "PNG signature ok, 382418 bytes"
+    },
+    "chart_svg": {
+      "status": "ok",
+      "detail": "SVG root element present"
+    },
+    "chart_aifs": {
+      "status": "ok",
+      "detail": "PNG signature ok, 279088 bytes"
+    },
+    "chart_aifs_svg": {
+      "status": "ok",
+      "detail": "SVG root element present"
+    },
+    "table1": {
+      "status": "ok",
+      "detail": "9 pipe rows; city headers present; no <br>"
+    },
+    "table2": {
+      "status": "ok",
+      "detail": "7 pipe rows; city headers present; no <br>"
+    },
+    "table3": {
+      "status": "invalid",
+      "detail": "table shape check failed"
+    },
+    "table4": {
+      "status": "ok",
+      "detail": "7 pipe rows; city headers present; no <br>"
+    }
+  }
+}
