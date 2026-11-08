@@ -396,6 +396,58 @@ def compute_city(city, start, end):
     return result
 
 
+def regional_digest(raw):
+    """Mechanical regional-grid statistics behind the outlook table.
+
+    Ulaanbaatar: the grid's maximum MSLP and the pooled tendency over the
+    first 72 hours of the regional series (the Siberian High segment of
+    the monsoon row). Manchuria / Sea of Japan: the grid's minimum MSLP in
+    the same span, with the grid point and valid time — the
+    extratropical-cyclone row's floor, a grid statistic only, never a
+    cyclone identification.
+    """
+    reg = raw.get('regional_forecasts') or {}
+
+    def samples(area):
+        rows = []
+        for point in (reg.get(area) or {}).get('grid_forecasts') or []:
+            hourly = point.get('hourly') or {}
+            for t, v in zip(hourly.get('time') or [], hourly.get('pressure_msl') or []):
+                if numeric(v):
+                    rows.append((parse_time(t), float(v),
+                                 point.get('latitude'), point.get('longitude')))
+        return sorted(rows)
+
+    digest = {}
+    for area in ('ulaanbaatar', 'manchuria', 'sea_of_japan'):
+        rows = samples(area)
+        if not rows:
+            continue
+        start = rows[0][0]
+        rows = [r for r in rows if r[0] < start + dt.timedelta(hours=72)]
+        if not rows:
+            continue
+        entry = {'span_hours': 72, 'samples': len(rows)}
+        if area == 'ulaanbaatar':
+            peak = max(rows, key=lambda r: r[1])
+            entry['max_pressure_hpa'] = round(peak[1], 1)
+            entry['max_at_utc'] = peak[0].isoformat()
+            first = [r[1] for r in rows if r[0] < start + dt.timedelta(hours=24)]
+            last_start = max(r[0] for r in rows) - dt.timedelta(hours=24)
+            last = [r[1] for r in rows if r[0] > last_start]
+            if first and last:
+                entry['tendency_hpa'] = round(
+                    sum(last) / len(last) - sum(first) / len(first), 1)
+        else:
+            low = min(rows, key=lambda r: r[1])
+            entry['min_pressure_hpa'] = round(low[1], 1)
+            entry['min_at_utc'] = low[0].isoformat()
+            entry['latitude'] = low[2]
+            entry['longitude'] = low[3]
+        digest[area] = entry
+    return digest
+
+
 def compute_bundle(raw):
     start, end = parse_time(raw['window_start_utc']), parse_time(raw['window_end_utc'])
     cities = {}
@@ -458,6 +510,7 @@ def compute_bundle(raw):
                                     'note': 'Calculation success does not resolve missing original report requirements.'},
             'cities': cities, 'cyclone_watch': cyclone_watch,
             'space_weather': parse_space_weather(sources),
+            'regional_digest': regional_digest(raw),
             'chart_confidence': chart_confidence}
 
 

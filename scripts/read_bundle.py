@@ -109,7 +109,8 @@ def main():
         svg_path.write_bytes(blob)
         bundle['chart_svg_local_path'] = str(svg_path)
         bundle['chart_svg_url'] = base+chart_svg['path']
-    for key, fname in (('table1', 'report_table1.md'), ('table2', 'report_table2.md')):
+    for key, fname in (('table1', 'report_table1.md'), ('table2', 'report_table2.md'),
+                       ('table3', 'report_table3.md'), ('table4', 'report_table4.md')):
         entry = bundle['products'].get(key)
         if entry:
             if entry['path'] != f'latest/{key}.md':

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Render the report's pipe tables (Table 1 / Table 2) from the bundle.
+"""Render the report's pipe tables (Tables 1 / 2 and the Message-3 outlook
+tables 3 / 4) from the bundle.
 
 The tables are deterministic formatting of calculated.json + the city
 digests — the user pointed out (2026-11-07) that they belong in the
@@ -7,9 +8,12 @@ workflow alongside the chart, leaving the 06:00 run the parts that need
 analysis: the official-forecast contradiction check on 天気， the
 category-by-category 特記 audit (the generated 特記 is the mechanical
 floor — digest flags, visibility, snowfall — to which the run adds the
-official-product, pollen, dust and flood/surge limbs), Message 3, and
+official-product, pollen, dust and flood/surge limbs), Message 3's
+judgement cells (the cyclone 脅威 cells, the monsoon and
+extratropical-cyclone interpretation, and the appended 判定 row), and
 verification. Cell rules are the cron's settled ones, encoded once here.
 """
+import math
 CITY_ORDER = [('Hong Kong', '香港'), ('Taipei', '台北'),
               ('Tokyo Minato Ward', '東京港区'), ('Takamatsu', '高松')]
 
@@ -204,3 +208,164 @@ def render_tables(raw, calculated):
           row('気圧', lambda c, d, r, j: _pressure(d)),
           row('特記', lambda c, d, r, j: _tokki_floor(c, d))]
     return '\n'.join(t1) + '\n', '\n'.join(t2) + '\n'
+
+
+# --- Message 3: the structured special-weather outlook (user, 2026-11-08) ---
+# Table 3 lists every active tropical cyclone; Table 4 is the fixed-row
+# outlook （季節風 / 温帯低気圧 / 宇宙天気 / ECMWF検証）. Both are mechanical
+# floors like Table 2's 特記: every shipped cell is a true statement at its
+# stated basis, and the 06:00 run replaces the 脅威 cells with its judged
+# assessment from the warning tracks, corrects the 季節風 / 温帯低気圧
+# cells against the ABPW text and JMA products when they say more, and
+# appends the 判定 row to Table 4 before sending.
+
+CATEGORY_TOKENS = {'SUPER TYPHOON': 'STY', 'TYPHOON': 'TY',
+                   'TROPICAL STORM': 'TS', 'TROPICAL DEPRESSION': 'TD'}
+
+MOVEMENT_TOKENS = {'NORTHWARD': 'N', 'NORTH-NORTHEASTWARD': 'NNE',
+                   'NORTHEASTWARD': 'NE', 'EAST-NORTHEASTWARD': 'ENE',
+                   'EASTWARD': 'E', 'EAST-SOUTHEASTWARD': 'ESE',
+                   'SOUTHEASTWARD': 'SE', 'SOUTH-SOUTHEASTWARD': 'SSE',
+                   'SOUTHWARD': 'S', 'SOUTH-SOUTHWESTWARD': 'SSW',
+                   'SOUTHWESTWARD': 'SW', 'WEST-SOUTHWESTWARD': 'WSW',
+                   'WESTWARD': 'W', 'WEST-NORTHWESTWARD': 'WNW',
+                   'NORTHWESTWARD': 'NW', 'NORTH-NORTHWESTWARD': 'NNW',
+                   'STATIONARY': '停滞', 'QUASI-STATIONARY': '停滞'}
+
+# The report's named warning areas (user, 2026-11-07), each with a
+# representative point for the sample-based closest-approach floor.
+WATCH_AREAS = [('香港', 22.3, 114.2), ('台湾', 23.8, 121.0),
+               ('ルソン海峡', 21.3, 120.9), ('小笠原', 27.1, 142.2),
+               ('火山列島', 24.8, 141.3), ('本州', 35.7, 139.8)]
+
+
+def _latlon(lat, lon):
+    if lat is None or lon is None:
+        return '―'
+    return (f"{abs(lat):.1f}{'N' if lat >= 0 else 'S'} "
+            f"{abs(lon):.1f}{'E' if lon >= 0 else 'W'}")
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 6371.0 * 2 * math.asin(math.sqrt(a))
+
+
+def _threat_floor(cw, system):
+    """Closest sampled approach to a named warning area, from the GFS /
+    ECMWF open-data samples along the warning track. A floor only: the
+    06:00 run replaces it with the judged threat from the warning text."""
+    sid = ((system or {}).get('id') or '').lower()
+    best = None
+    for name, check in ((cw or {}).get('track_checks') or {}).items():
+        if sid and sid not in name:
+            continue
+        for s in (check or {}).get('samples') or []:
+            lat, lon = s.get('latitude'), s.get('longitude')
+            if lat is None or lon is None:
+                continue
+            for label, alat, alon in WATCH_AREAS:
+                dist = _haversine_km(lat, lon, alat, alon)
+                if best is None or dist < best[0]:
+                    best = (dist, label)
+    if best is None:
+        return '―'
+    if best[0] > 1000:
+        return '対象地域から1,000km超（サンプル）'
+    return f"{best[1]} 約{int(round(best[0] / 10.0)) * 10}km（サンプル）"
+
+
+def _system_row(cw, system):
+    token = CATEGORY_TOKENS.get(system.get('category'), system.get('category') or '')
+    name = system.get('name')
+    head = f"{name}（{system.get('id')}・{token}）" if name else f"{system.get('id')}（{token}）"
+    move = MOVEMENT_TOKENS.get(system.get('movement_text'), system.get('movement_text'))
+    motion = []
+    if move and system.get('movement_kt') is not None:
+        motion.append(f"{move} {system['movement_kt']}kt")
+    elif move:
+        motion.append(str(move))
+    if system.get('max_winds_kt') is not None:
+        motion.append(f"最大{system['max_winds_kt']}kt")
+    if system.get('gusts_kt') is not None:
+        motion.append(f"突風{system['gusts_kt']}kt")
+    return (f"| {head} | {_latlon(system.get('latitude'), system.get('longitude'))} | "
+            f"{'・'.join(motion) if motion else '―'} | {_threat_floor(cw, system)} |")
+
+
+def _monsoon_cell(cw, digest):
+    mentions = (cw or {}).get('monsoon_mentions') or []
+    head = '特記なし' if not mentions else f'ABPWに言及あり（{len(mentions)}行）'
+    ub = (digest or {}).get('ulaanbaatar') or {}
+    if ub.get('max_pressure_hpa') is not None:
+        head += f"｜UB域 格子最大 {fmt(ub['max_pressure_hpa'], 0)}hPa"
+        if ub.get('tendency_hpa') is not None:
+            head += f"・傾向 {ub['tendency_hpa']:+.1f}"
+    return head
+
+
+def _etc_cell(digest):
+    parts = []
+    for key, label in (('manchuria', '満洲'), ('sea_of_japan', '日本海')):
+        e = (digest or {}).get(key) or {}
+        if e.get('min_pressure_hpa') is None:
+            continue
+        at = e.get('min_at_utc') or ''
+        when = f"{at[5:7]}/{at[8:10]} {at[11:16]}UTC" if len(at) >= 16 else at
+        parts.append(f"{label} 格子最小 {fmt(e['min_pressure_hpa'], 0)}hPa"
+                     f"（{_latlon(e.get('latitude'), e.get('longitude'))}・{when}）")
+    return '・'.join(parts) if parts else '―'
+
+
+def _space_cell(sw):
+    sw = sw or {}
+    if not sw.get('extreme'):
+        return '特記なし'
+    ids = sw.get('warning_or_alert_ids') or []
+    return (f"G{sw.get('max_g_scale_in_outlook')}級・Kp {fmt(sw.get('max_kp_in_outlook'))}"
+            f"（警報・注意報 {'・'.join(ids) if ids else 'なし'}）")
+
+
+def _ecmwf_cell(cw):
+    prod = (cw or {}).get('ecmwf_cyclone_product') or {}
+    if prod.get('ok'):
+        head = f"サイクロンプロダクト 取得可（基準時刻 {prod.get('base_time_used')}）"
+    else:
+        head = (f"サイクロンプロダクト 取得不可（HTTP {prod.get('http_status')}"
+                f"・{len(prod.get('attempts') or [])}基準時刻）")
+    checks = (cw or {}).get('track_checks') or {}
+    if checks:
+        gfs = any(k.startswith('gfs/') and (v or {}).get('ok') for k, v in checks.items())
+        ecm = any(k.startswith('ecmwf_opendata/') and (v or {}).get('ok')
+                  for k, v in checks.items())
+        head += (f"｜進路サンプル GFS {'有' if gfs else 'なし'}"
+                 f"・ECMWF開放データ {'有' if ecm else 'なし'}")
+    return head
+
+
+def render_outlook(raw, calculated):
+    """Return (table3_markdown, table4_markdown) for Message 3.
+
+    Table 3: one row per active tropical cyclone, or the single settled
+    line when there are none. Table 4: the fixed-row special outlook;
+    the 判定 row is the 06:00 run's to append, never rendered here.
+    """
+    calculated = calculated or {}
+    cw = calculated.get('cyclone_watch') or {}
+    systems = cw.get('systems') or []
+    if systems:
+        t3 = ['| 名称 | 位置 | 移動・強度 | 脅威 |', '|---|---|---|---|']
+        t3 += [_system_row(cw, s) for s in systems]
+        table3 = '\n'.join(t3) + '\n'
+    else:
+        table3 = '熱帯低気圧：なし\n'
+    digest = calculated.get('regional_digest') or {}
+    t4 = ['| 項目 | 状況 | 対象・根拠 |', '|---|---|---|',
+          f"| 季節風 | {_monsoon_cell(cw, digest)} | JTWC ABPW・EC46地域格子 |",
+          f"| 温帯低気圧 | {_etc_cell(digest)} | EC46地域格子（格子値） |",
+          f"| 宇宙天気 | {_space_cell(calculated.get('space_weather'))} | SWPC・NICT |",
+          f"| ECMWF検証 | {_ecmwf_cell(cw)} | ECMWF OpenCharts・NOAA GFS・ECMWF Open Data |"]
+    return table3, '\n'.join(t4) + '\n'

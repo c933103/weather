@@ -73,6 +73,26 @@ def prepare(output):
         products['tables_ready'] = False
         table1_path.unlink(missing_ok=True)
         table2_path.unlink(missing_ok=True)
+    # Message 3's structured outlook tables (Table 3 cyclones, Table 4 the
+    # fixed-row special outlook), rendered from the same calculated bundle.
+    # A failure here never blocks the tables, the chart or the calculation.
+    table3_path = latest / 'table3.md'
+    table4_path = latest / 'table4.md'
+    table3_path.unlink(missing_ok=True)
+    table4_path.unlink(missing_ok=True)
+    try:
+        from render_tables import render_outlook
+        t3, t4 = render_outlook(raw, calculated)
+        table3_path.write_text(t3, encoding='utf-8')
+        table4_path.write_text(t4, encoding='utf-8')
+        products['table3'] = file_entry(table3_path)
+        products['table4'] = file_entry(table4_path)
+        products['outlook_ready'] = True
+    except Exception as exc:
+        products['outlook_error'] = f'{type(exc).__name__}: {exc}'
+        products['outlook_ready'] = False
+        table3_path.unlink(missing_ok=True)
+        table4_path.unlink(missing_ok=True)
     manifest['products'] = products
     # Never replace the original collection quality with calculation/chart success.
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
