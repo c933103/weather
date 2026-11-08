@@ -1,6 +1,6 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-08T11:30:49.360835+00:00",
+  "generated_at_utc": "2026-11-08T18:46:35.512323+00:00",
   "target_date_jst": "2026-11-09",
   "cities": {
     "Hong Kong": {
@@ -190,7 +190,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: mist"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -321,7 +321,9 @@
         "text": "STOFS levels sit on the NOAA model datum: combined levels are compared only with the STOFS model's own astronomical tide, never with official tide-table datums."
       }
     ],
-    "new_source_failures": [],
+    "new_source_failures": [
+      "ecmwf_opendata/cyclone_check_31w"
+    ],
     "quality_state": "partial",
     "quality_reasons": [
       "GloFAS grids have not been matched to applicable river reaches and flood thresholds.",
@@ -329,6 +331,7 @@
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
       "jma/kagawa_warnings: stale official issue timestamp; not current warning evidence",
+      "ecmwf_opendata/cyclone_check_31w: request failed (None)",
       "ecmwf/cyclone_product: request failed (404)"
     ],
     "products_invalid": []
@@ -336,7 +339,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 372243 bytes"
+      "detail": "PNG signature ok, 370332 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -344,7 +347,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 283641 bytes"
+      "detail": "PNG signature ok, 285132 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
