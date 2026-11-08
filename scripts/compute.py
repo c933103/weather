@@ -594,6 +594,22 @@ def compute_city(city, start, end):
                 'observatory forecast contradicts them. The GFS frost limb is its '
                 '0–10 cm soil-layer temperature, NOT equivalent to the IFS surface '
                 '(skin) temperature: contextual only, never a validation of the frost flag.'}
+    # Prevailing wind direction: the speed-weighted circular mean of the
+    # hourly directions (the resultant direction). A resultant ratio
+    # below 0.05 means the flow is variable and no prevailing direction
+    # is claimed.
+    _sx = _sy = _sw = 0.0
+    for _t, _deg in directions.items():
+        _s = wind.get(_t)
+        if _s is None or _deg is None:
+            continue
+        _r = math.radians(_deg)
+        _sx += _s * math.sin(_r)
+        _sy += _s * math.cos(_r)
+        _sw += _s
+    prevailing_deg = None
+    if _sw > 0 and math.hypot(_sx, _sy) / _sw >= 0.05:
+        prevailing_deg = round((math.degrees(math.atan2(_sx, _sy)) + 360) % 360, 1)
     result['report_digest'] = {
         'dominant_weather_code': Counter(codes).most_common(1)[0][0] if codes else None,
         'humidity_mean': round(sum(humidity) / len(humidity), 1) if len(humidity) == 24 else None,
@@ -604,6 +620,9 @@ def compute_city(city, start, end):
         'wind_direction_at_max_compass': compass16(directions.get(max_wind_time)) if max_wind_time else None,
         'wbgt_band': wbgt_band,
         'wind_speed_mean_ms': round(sum(wind.values()) / len(wind), 2) if len(wind) == 24 else None,
+        'wind_speed_max_ms': round(max(wind.values()), 2) if len(wind) == 24 else None,
+        'wind_prevailing_direction_deg': prevailing_deg,
+        'wind_prevailing_compass': compass16(prevailing_deg) if prevailing_deg is not None else None,
         'wind_gust_max_ms': result['wind_gusts_10m'].get('maximum') if result['wind_gusts_10m'].get('ready') else None,
         'wind_gust_max_time_utc': result['wind_gusts_10m'].get('time_of_maximum_utc') if result['wind_gusts_10m'].get('ready') else None,
         'hazard_flags': hazard_flags(

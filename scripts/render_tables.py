@@ -91,20 +91,34 @@ def _precip(c):
     return ' '.join(parts)
 
 
+def _ms(v):
+    s = f'{v:.1f}'
+    return s.rstrip('0').rstrip('.') if '.' in s else s
+
+
 def _wind(c, digest):
-    wmax = (c.get('wind_speed_10m') or {}).get('maximum')
-    compass = (digest or {}).get('wind_direction_at_max_compass')
+    """All wind speeds in m/s (user direction, 2026-11-08): maximum
+    sustained with its direction, gust maximum, window mean, and the
+    prevailing (resultant) direction — four distinct statistics in one
+    consistent unit, each labelled."""
+    digest = digest or {}
+    wmax = digest.get('wind_speed_max_ms')
+    if wmax is None:
+        wmax = (c.get('wind_speed_10m') or {}).get('maximum')
     if wmax is None:
         return '―'
-    parts = [f'最大{round(wmax * 3.6)}km/h']
+    parts = [f'最大{_ms(wmax)}m/s']
+    compass = digest.get('wind_direction_at_max_compass')
     if compass:
         parts.append(compass)
-    gust = (digest or {}).get('wind_gust_max_ms')
+    gust = digest.get('wind_gust_max_ms')
     if gust is not None:
-        parts.append(f'突風{round(gust * 3.6)}')
-    mean = (digest or {}).get('wind_speed_mean_ms')
+        parts.append(f'突風{_ms(gust)}')
+    mean = digest.get('wind_speed_mean_ms')
     if mean is not None:
-        parts.append(f'平均{round(mean * 3.6)}')
+        parts.append(f'平均{_ms(mean)}')
+    prev = digest.get('wind_prevailing_compass')
+    parts.append(f'卓越{prev}' if prev else '卓越―')
     return ' '.join(parts)
 
 
@@ -713,7 +727,7 @@ def _regional_hazard(calculated):
             snow_day.append((snow, label))
         g = ((c.get('report_digest') or {}).get('wind_gust_max_ms'))
         if g is not None:
-            gust.append((g * 3.6, label))
+            gust.append((g, label))
     findings = []
     if rain_day and max(rain_day)[0] >= 50:
         findings.append(f"大雨（{max(rain_day)[1]} 日降水{fmt(max(rain_day)[0], 0)}mm）")
@@ -721,8 +735,8 @@ def _regional_hazard(calculated):
         findings.append(f"短時間強雨（{max(rain_1h)[1]} 1h{fmt(max(rain_1h)[0], 0)}mm）")
     if snow_day and max(snow_day)[0] >= 5:
         findings.append(f"大雪（{max(snow_day)[1]} 降雪{fmt(max(snow_day)[0], 0)}cm）")
-    if gust and max(gust)[0] >= 90:
-        findings.append(f"強風（{max(gust)[1]} 突風{fmt(max(gust)[0], 0)}km/h）")
+    if gust and max(gust)[0] >= 25:
+        findings.append(f"強風（{max(gust)[1]} 突風{fmt(max(gust)[0], 1)}m/s）")
     analysis = '・'.join(findings) if findings else '都市計算値の範囲では特記なし'
     analysis += '。波浪・交通影響はモデル値なし（警報類で確認）'
     values = []
@@ -733,7 +747,16 @@ def _regional_hazard(calculated):
     if snow_day:
         values.append(f"降雪最大 {fmt(max(snow_day)[0], 0)}cm（{max(snow_day)[1]}）")
     if gust:
-        values.append(f"突風最大 {fmt(max(gust)[0], 0)}km/h（{max(gust)[1]}）")
+        values.append(f"突風最大 {fmt(max(gust)[0], 1)}m/s（{max(gust)[1]}）")
+    surge = []
+    for name, label in _SHORT_LABELS.items():
+        exc = (((cities.get(name) or {}).get('coastal_assessment') or {})
+               .get('exceedance_over_model_tide_m'))
+        if exc is not None and exc >= 0.5:
+            surge.append((exc, label))
+    if surge:
+        exc, label = max(surge)
+        values.append(f"STOFS水位偏差 +{exc:.1f}m（{label}）・警報閾値未検証")
     return analysis, '・'.join(values) if values else '―'
 
 

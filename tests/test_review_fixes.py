@@ -14,7 +14,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from compute import (coastal_assessment, compute_city, parse_space_weather,
+from compute import (coastal_assessment, compass16, compute_city, parse_space_weather,
                      _track_assessment)
 from validate import build_validation, check_products, check_products
 import render_tables as rt
@@ -244,9 +244,22 @@ class RenderCellTests(unittest.TestCase):
         d = {'wind_direction_at_max_compass': '北西',
              'wind_gust_max_ms': 15.0, 'wind_speed_mean_ms': 4.0}
         cell = rt._wind(c, d)
-        self.assertIn('最大36km/h', cell)
-        self.assertIn('突風54', cell)
-        self.assertIn('平均14', cell)
+        # All wind speeds in m/s (user direction, 2026-11-08): max,
+        # gust and mean are distinct, labelled statistics in one unit.
+        self.assertIn('最大10m/s', cell)
+        self.assertIn('突風15', cell)
+        self.assertIn('平均4', cell)
+        self.assertIn('卓越―', cell)
+        d['wind_prevailing_compass'] = '北東'
+        self.assertIn('卓越北東', rt._wind(c, d))
+
+    def test_digest_wind_max_and_prevailing(self):
+        got = compute_city(make_city(), START, END)['report_digest']
+        self.assertEqual(got['wind_speed_max_ms'], 4.0)
+        self.assertEqual(got['wind_speed_mean_ms'], 4.0)
+        # Constant 300-degree flow: the resultant direction is 300.
+        self.assertEqual(got['wind_prevailing_direction_deg'], 300.0)
+        self.assertEqual(got['wind_prevailing_compass'], compass16(300.0))
 
     def test_wbgt_cell_shows_the_range(self):
         c = {'wbgt': {'maximum': 26.0, 'minimum': 18.0},
