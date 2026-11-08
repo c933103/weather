@@ -58,12 +58,15 @@ def _heat_cold(c, digest, japan):
     band = (digest or {}).get('wbgt_band')
     chill = c.get('wind_chill') or {}
     chill_ok = chill.get('status') == 'applicable' and chill.get('minimum') is not None
+    wbgt_min = wbgt.get('minimum')
+    wbgt_text = (f'{fmt(wbgt_min)}~{fmt(wbgt_max)} {band}' if wbgt_min is not None
+                 else f'{fmt(wbgt_max)} {band}')
     if wbgt_max is not None and wbgt_max >= 21 and band:
-        return f'{fmt(wbgt_max)} {band}'
+        return wbgt_text
     if chill_ok:
         return f"風冷 {fmt(chill['minimum'])}"
     if japan and wbgt_max is not None and band:
-        return f'{fmt(wbgt_max)} {band}'
+        return wbgt_text
     return '―'
 
 
@@ -73,12 +76,18 @@ def _precip(c):
     snow = (c.get('snowfall') or {}).get('total')
     snowp = (c.get('snow_probability') or {}).get('percent')
     head = f'{fmt(prob, 0)}%' if prob is not None else '―'
-    snow_expected = (snow is not None and snow >= 0.1) or (snowp is not None and snowp >= 50)
     parts = [head]
     if total is not None and total > 0:
         parts.append(f'{fmt(total)}mm')
-    if snow_expected and snow is not None:
+    # Snowfall probability is an independent ensemble quantity: shown on
+    # its own threshold, never merged into the rain probability.
+    if snowp is not None and snowp >= 30:
+        parts.append(f'雪確率{fmt(snowp, 0)}%')
+    if snow is not None and snow >= 0.1:
         parts.append(f'雪 {fmt(snow)}cm')
+    depth = (c.get('snow_depth_cm') or {}).get('maximum')
+    if depth is not None and depth >= 0.5:
+        parts.append(f'積雪深 {fmt(depth)}cm')
     return ' '.join(parts)
 
 
@@ -87,8 +96,16 @@ def _wind(c, digest):
     compass = (digest or {}).get('wind_direction_at_max_compass')
     if wmax is None:
         return '―'
-    kmh = round(wmax * 3.6)
-    return f'{kmh}km/h {compass}' if compass else f'{kmh}km/h'
+    parts = [f'最大{round(wmax * 3.6)}km/h']
+    if compass:
+        parts.append(compass)
+    gust = (digest or {}).get('wind_gust_max_ms')
+    if gust is not None:
+        parts.append(f'突風{round(gust * 3.6)}')
+    mean = (digest or {}).get('wind_speed_mean_ms')
+    if mean is not None:
+        parts.append(f'平均{round(mean * 3.6)}')
+    return ' '.join(parts)
 
 
 def _aqi_category(v):
@@ -108,8 +125,13 @@ def _aqi(c, raw_city):
     if vmax is None or not lead:
         return '―'
     leaders = [AQI_FIELDS.get(lead[1], lead[1])]
-    # Second leader: another pollutant within 10 sub-index points of the
-    # leader at the worst hour, read from the city's raw air-quality series.
+    second = aqi.get('second_component_at_worst_hour')
+    if second:
+        leaders.append(AQI_FIELDS.get(second[1], second[1]))
+        return f"{fmt(vmax, 0)} {_aqi_category(vmax)} {'・'.join(leaders)}"
+    # Fallback for older calculated bundles: another pollutant within 10
+    # sub-index points of the leader at the worst hour, read from the
+    # city's raw air-quality series at that same hour.
     raw = (raw_city or {}).get('raw_air_quality') or {}
     times = raw.get('time') or []
     if lead[2] in times:
@@ -159,14 +181,45 @@ def _tokki_floor(c, digest):
         tokens.append('高PM')
     if flags.get('frost'):
         tokens.append('霜')
-    vis = (c.get('visibility') or {}).get('minimum')
-    if vis is not None and vis < 1000:
+    fog = (c.get('fog') or {}).get('classification')
+    if fog == 'fog':
         tokens.append('霧')
+    elif fog == 'mist':
+        tokens.append('もや')
+    if (c.get('urban_inundation') or {}).get('screen_positive'):
+        tokens.append('内水注意')
     snow = (c.get('snowfall') or {}).get('total')
     snowp = (c.get('snow_probability') or {}).get('percent')
     if (snow is not None and snow >= 0.1) or (snowp is not None and snowp >= 50):
         tokens.append('雪')
     return '・'.join(tokens) if tokens else '無'
+
+
+def _tide(c, raw_city):
+    coast = c.get('coastal_assessment') or {}
+    official = coast.get('official_tide') or {}
+    events = official.get('events') or []
+    if not events:
+        return '―'
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo((raw_city or {}).get('timezone') or 'UTC')
+
+    def height(ev):
+        if 'height' in ev:
+            return ev['height']
+        return ev.get('height_local_msl')
+    highs = [e for e in events if e.get('kind') == 'high' and height(e) is not None]
+    lows = [e for e in events if e.get('kind') == 'low' and height(e) is not None]
+    unit = official.get('units') or ''
+    digits = 1 if unit == 'm' else 0
+    parts = []
+    if highs:
+        ev = max(highs, key=height)
+        parts.append(f"満潮 {_parse_iso(ev['time']).astimezone(tz):%H:%M} {fmt(height(ev), digits)}{unit}")
+    if lows:
+        ev = min(lows, key=height)
+        parts.append(f"干潮 {_parse_iso(ev['time']).astimezone(tz):%H:%M} {fmt(height(ev), digits)}{unit}")
+    return ' '.join(parts) if parts else '―'
 
 
 def render_tables(raw, calculated):
@@ -209,6 +262,7 @@ def render_tables(raw, calculated):
           row('AQI', lambda c, d, r, j: _aqi(c, r)),
           row('UV', lambda c, d, r, j: _uv(c)),
           row('気圧', lambda c, d, r, j: _pressure(d)),
+          row('潮汐', lambda c, d, r, j: _tide(c, r)),
           row('特記', lambda c, d, r, j: _tokki_floor(c, d))]
     return '\n'.join(t1) + '\n', '\n'.join(t2) + '\n'
 
@@ -324,11 +378,29 @@ def _parse_warning(text, anchor):
                       int(w2.group(1)) if w2 else None))
     track = [p for p in track if p[0] is not None]
     track.sort(key=lambda p: p[0])
+    # Wind radii per track point (maximum over quadrants, nautical miles)
+    # and the analysis maximum significant wave height: the impact fields
+    # the centre distance alone cannot express.
+    marks = [pos.start()] + [fm.start() for fm in _FCST_RE.finditer(text)]
+    radii = []
+    for i, mstart in enumerate(marks):
+        mend = marks[i + 1] if i + 1 < len(marks) else len(text)
+        segment = text[mstart:mend]
+        entry = {}
+        for block in re.finditer(
+                r'RADIUS OF (\d+) KT WINDS - (.*?)(?=RADIUS OF|FORECAST WINDS|'
+                r'MAXIMUM SIGNIFICANT|REMARKS|\Z)', segment, re.S):
+            values = [int(v) for v in re.findall(r'(\d+) NM', block.group(2))]
+            if values:
+                entry[int(block.group(1))] = max(values)
+        radii.append(entry)
+    wave = re.search(r'MAXIMUM\s+SIGNIFICANT\s+WAVE\s+HEIGHT\s+AT\s+\d+Z\s+IS\s+(\d+)\s+FEET', text)
     return {'valid': valid, 'lat': lat, 'lon': lon, 'max_kt': max_kt,
             'gust_kt': gust_kt,
             'move_deg': int(move.group(1)) if move else None,
             'move_kt': int(move.group(2)) if move else None,
-            'track': track}
+            'track': track, 'track_radii': radii,
+            'max_wave_ft': int(wave.group(1)) if wave else None}
 
 
 def _track_closest(track, alat, alon):
@@ -363,30 +435,55 @@ def _round10(value):
     return int(round(value / 10.0)) * 10
 
 
-def _warning_threat(track):
+def _gale_reach(track, radii, alat, alon):
+    """True when any forecast point's 34 kt wind radius reaches the area:
+    the wind impact outcome, assessed separately from the centre track."""
+    if not radii:
+        return False
+    for (_t, la, lo, _w), entry in zip(track, radii):
+        r34 = (entry or {}).get(34)
+        if r34 and _haversine_km(la, lo, alat, alon) <= r34 * 1.852:
+            return True
+    return False
+
+
+def _warning_threat(track, radii=None, max_wave_ft=None):
     """Analyzed threat from the warning forecast track: the closest
     approach to each named warning area, segment-interpolated, with the
-    JST time and the forecast intensity at closest approach."""
+    JST time and the forecast intensity at closest approach — plus the
+    separate wind outcome (34 kt radii reach) and maritime outcome
+    (maximum significant wave height), which the centre distance alone
+    understates."""
     per_area = []
     for label, alat, alon in WATCH_AREAS:
         got = _track_closest(track, alat, alon)
         if got:
-            per_area.append((got[0], label, got[1], got[2]))
+            per_area.append((got[0], label, got[1], got[2],
+                             _gale_reach(track, radii, alat, alon)))
     if not per_area:
         return '―'
     per_area.sort(key=lambda p: p[0])
     close = [p for p in per_area if p[0] <= 1000]
     if not close:
-        return (f"対象地域への接近なし"
+        text = (f"対象地域への接近なし"
                 f"（最接近 {per_area[0][1]} 約{_round10(per_area[0][0])}km）")
-    dist, label, when, wind = close[0]
+        if any(p[4] for p in per_area):
+            text += '（ただし暴風域の到達あり）'
+        return text
+    dist, label, when, wind, gale = close[0]
     head = f"{label} 約{_round10(dist)}km"
     if when is not None:
         head += f"・{when.astimezone(_JST):%m/%d %H:%M}JST"
     if wind is not None:
         head += f"・{int(round(wind))}kt級"
+    if gale:
+        head += '・暴風域到達'
     if len(close) > 1:
         head += f"・{close[1][1]} 約{_round10(close[1][0])}km"
+        if close[1][4] and not gale:
+            head += '（暴風域到達）'
+    if max_wave_ft is not None and max_wave_ft >= 15:
+        head += f'・高波{max_wave_ft}ft'
     return head
 
 
@@ -434,7 +531,7 @@ def _system_row(raw, anchor, system):
         else:
             move = '―'
         return (f"| {head} | {'・'.join(pos)} | {move} | "
-                f"{_warning_threat(warn['track'])} |")
+                f"{_warning_threat(warn['track'], warn.get('track_radii'), warn.get('max_wave_ft'))} |")
     head = f"{name}（{sid}・{fallback_token}）" if name else f"{sid}（{fallback_token}）"
     pos = [_latlon(system.get('latitude'), system.get('longitude'))]
     if system.get('max_winds_kt') is not None:
@@ -509,11 +606,24 @@ def _etc_values(digest):
 
 def _space_analysis(sw):
     sw = sw or {}
-    if not sw.get('extreme'):
+    scales = sw.get('scales') or {}
+    parts = []
+    if scales.get('geomagnetic_G') is not None:
+        parts.append(f"地磁気嵐 G{scales['geomagnetic_G']}級")
+    elif sw.get('max_g_scale_in_outlook') is not None:
+        parts.append(f"地磁気嵐 G{sw['max_g_scale_in_outlook']}級")
+    if scales.get('radiation_storm_S') is not None:
+        parts.append(f"放射線嵐 S{scales['radiation_storm_S']}級")
+    if scales.get('radio_blackout_R') is not None:
+        parts.append(f"電波障害 R{scales['radio_blackout_R']}級")
+    if sw.get('cme_arrivals'):
+        parts.append('CME到達の言及あり')
+    if not parts and not sw.get('extreme'):
         return '特記なし'
+    head = '・'.join(parts) if parts else '警報級の事象'
+    if sw.get('extreme'):
+        head += '。4都市の日常生活への直接の影響は限定的'
     ids = sw.get('warning_or_alert_ids') or []
-    head = (f"地磁気嵐の見込み（G{sw.get('max_g_scale_in_outlook')}級）。"
-            f"4都市の日常生活への直接の影響は限定的")
     if ids:
         head += f"（警報・注意報 {'・'.join(ids)}）"
     return head
@@ -527,6 +637,8 @@ def _space_values(sw):
     nict = sw.get('nict') or {}
     if nict.get('kakioka_k_max_24h') is not None:
         parts.append(f"柿岡K最大 {fmt(nict['kakioka_k_max_24h'], 0)}")
+    if sw.get('cme_arrivals'):
+        parts.append(f"CME到達言及 {len(sw['cme_arrivals'])}件")
     return '・'.join(parts) if parts else '―'
 
 
@@ -542,11 +654,15 @@ def _track_check_flags(cw):
 def _ecmwf_analysis(cw):
     prod = (cw or {}).get('ecmwf_cyclone_product') or {}
     if prod.get('ok'):
-        return 'ECMWFサイクロンプロダクトで進路を確認済み'
+        return 'ECMWFサイクロンプロダクトを取得し進路と照合'
+    checks = (cw or {}).get('track_checks') or {}
+    assessments = [(v or {}).get('assessment') or {} for v in checks.values()]
+    if any(a.get('agreement') == 'consistent_with' for a in assessments):
+        return ('ECMWF製品は取得不可。独立モデルサンプルは警報位置と整合'
+                '（中心同定ではなく整合性確認）')
+    if any(a.get('retrieved') for a in assessments):
+        return 'ECMWF製品は取得不可。サンプルは取得済みだが整合は不確定'
     has, gfs, ecm = _track_check_flags(cw)
-    if has and gfs and ecm:
-        return ('ECMWF製品は取得不可。進路はGFS・ECMWF開放データの'
-                'サンプルで代替確認')
     if has and (gfs or ecm):
         return 'ECMWF製品は取得不可。進路サンプルで部分的に代替確認'
     return 'ECMWF製品・代替サンプルとも取得不可'
@@ -563,7 +679,62 @@ def _ecmwf_values(cw):
     if has:
         head += (f"｜進路サンプル GFS {'有' if gfs else 'なし'}"
                  f"・ECMWF開放データ {'有' if ecm else 'なし'}")
+    checks = (cw or {}).get('track_checks') or {}
+    mins = [(v.get('assessment') or {}).get('point_pressure_min_hpa')
+            for v in checks.values()]
+    mins = [m for m in mins if m is not None]
+    if mins:
+        head += f"｜サンプル点圧 最小{fmt(min(mins), 0)}hPa・中心同定なし"
     return head
+
+
+_SHORT_LABELS = {'Hong Kong': '香港', 'Taipei': '台北',
+                 'Tokyo Minato Ward': '東京', 'Takamatsu': '高松'}
+
+
+def _regional_hazard(calculated):
+    """Heavy rain, snow and gusts assessed across the four cities —
+    regional hazards beyond the cyclone track (review fix, 2026-11-08).
+    Sea state and transport consequences have no city-level model field
+    in the bundle; the row says so rather than implying they were
+    assessed."""
+    cities = (calculated or {}).get('cities') or {}
+    rain_day, rain_1h, snow_day, gust = [], [], [], []
+    for name, label in _SHORT_LABELS.items():
+        c = cities.get(name) or {}
+        total = (c.get('precipitation') or {}).get('total')
+        if total is not None:
+            rain_day.append((total, label))
+        screen = c.get('urban_inundation') or {}
+        if screen.get('max_1h_mm') is not None:
+            rain_1h.append((screen['max_1h_mm'], label))
+        snow = (c.get('snowfall') or {}).get('total')
+        if snow is not None:
+            snow_day.append((snow, label))
+        g = ((c.get('report_digest') or {}).get('wind_gust_max_ms'))
+        if g is not None:
+            gust.append((g * 3.6, label))
+    findings = []
+    if rain_day and max(rain_day)[0] >= 50:
+        findings.append(f"大雨（{max(rain_day)[1]} 日降水{fmt(max(rain_day)[0], 0)}mm）")
+    if rain_1h and max(rain_1h)[0] >= 30:
+        findings.append(f"短時間強雨（{max(rain_1h)[1]} 1h{fmt(max(rain_1h)[0], 0)}mm）")
+    if snow_day and max(snow_day)[0] >= 5:
+        findings.append(f"大雪（{max(snow_day)[1]} 降雪{fmt(max(snow_day)[0], 0)}cm）")
+    if gust and max(gust)[0] >= 90:
+        findings.append(f"強風（{max(gust)[1]} 突風{fmt(max(gust)[0], 0)}km/h）")
+    analysis = '・'.join(findings) if findings else '都市計算値の範囲では特記なし'
+    analysis += '。波浪・交通影響はモデル値なし（警報類で確認）'
+    values = []
+    if rain_day:
+        values.append(f"日降水最大 {fmt(max(rain_day)[0], 0)}mm（{max(rain_day)[1]}）")
+    if rain_1h:
+        values.append(f"1h最大 {fmt(max(rain_1h)[0], 0)}mm（{max(rain_1h)[1]}）")
+    if snow_day:
+        values.append(f"降雪最大 {fmt(max(snow_day)[0], 0)}cm（{max(snow_day)[1]}）")
+    if gust:
+        values.append(f"突風最大 {fmt(max(gust)[0], 0)}km/h（{max(gust)[1]}）")
+    return analysis, '・'.join(values) if values else '―'
 
 
 def render_outlook(raw, calculated):
@@ -592,6 +763,7 @@ def render_outlook(raw, calculated):
     t4 = ['| 項目 | 分析 | 数値・根拠 |', '|---|---|---|',
           f"| 季節風 | {_monsoon_analysis(cw, digest)} | {_monsoon_values(cw, digest)} |",
           f"| 温帯低気圧 | {_etc_analysis(digest)} | {_etc_values(digest)} |",
+          f"| 地域災害 | {_regional_hazard(calculated)[0]} | {_regional_hazard(calculated)[1]} |",
           f"| 宇宙天気 | {_space_analysis(sw)} | {_space_values(sw)} |",
           f"| ECMWF検証 | {_ecmwf_analysis(cw)} | {_ecmwf_values(cw)} |"]
     return table3, '\n'.join(t4) + '\n'

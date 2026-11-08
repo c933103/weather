@@ -118,6 +118,24 @@ def prepare(output):
         products['outlook_ready'] = False
         table3_path.unlink(missing_ok=True)
         table4_path.unlink(missing_ok=True)
+    # Structured validation of every reported variable and hazard, plus
+    # mechanical product checks (review fix, 2026-11-08). Published as
+    # validation.json; the 06:00 run reads it before composing anything.
+    validation_path = latest / 'validation.json'
+    validation_path.unlink(missing_ok=True)
+    try:
+        from validate import build_validation, check_products
+        validation = build_validation(raw, calculated)
+        validation['products'] = check_products(products, latest)
+        validation['coverage']['products_invalid'] = sorted(
+            k for k, v in validation['products'].items() if v['status'] == 'invalid')
+        validation_path.write_text(json.dumps(validation, ensure_ascii=False, indent=2), encoding='utf-8')
+        products['validation'] = file_entry(validation_path)
+        products['validation_ready'] = True
+    except Exception as exc:
+        products['validation_error'] = f'{type(exc).__name__}: {exc}'
+        products['validation_ready'] = False
+        validation_path.unlink(missing_ok=True)
     manifest['products'] = products
     # Never replace the original collection quality with calculation/chart success.
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')

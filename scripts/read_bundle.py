@@ -11,6 +11,11 @@ import urllib.request
 
 from collect import CITIES, UTC, iso_now, parse_time
 
+# The reader is pinned to the bundle's own collector commit by the 06:00
+# run (never refreshed from floating main). A bundle whose manifest
+# requires a newer reader than this is rejected, not misread.
+READER_VERSION = 2
+
 
 def get_bytes(url):
     with urllib.request.urlopen(urllib.request.Request(url, headers={
@@ -28,6 +33,9 @@ def validate_manifest(manifest, day, now, max_age_hours):
         raise ValueError(f'STALE_OR_FUTURE_COLLECTION: {age:.2f} hours')
     if not all(key in manifest.get('files', {}) for key in [*CITIES, 'official']):
         raise ValueError('INCOMPLETE_FILE_MANIFEST')
+    required = (manifest.get('reader') or {}).get('min_reader_version', 1)
+    if required > READER_VERSION:
+        raise ValueError(f'READER_TOO_OLD: bundle requires reader {required}, this is {READER_VERSION}')
 
 
 def verify_bytes(blob, entry):
@@ -138,6 +146,13 @@ def main():
             table_path.write_bytes(blob)
             bundle[f'{key}_local_path'] = str(table_path)
             bundle[f'{key}_url'] = base+entry['path']
+    validation = bundle['products'].get('validation')
+    if validation:
+        if validation['path'] != 'latest/validation.json':
+            raise ValueError('UNEXPECTED_VALIDATION_PATH')
+        blob = get_bytes(base+validation['path'])
+        verify_bytes(blob, validation)
+        bundle['validation'] = json.loads(blob)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(bundle, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     print(json.dumps({'date': args.target_date_jst, 'data_commit': commit,

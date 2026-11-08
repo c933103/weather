@@ -340,7 +340,10 @@ def build_chart_data(raw, target_day, flavour='ifs'):
             'target_date': target_day,
             'dates': [(d0 + timedelta(days=i)).strftime('%m/%d') for i in range(28)],
             'y_min': math.floor(min(bounds) - 2), 'y_max': math.ceil(max(bounds) + 2),
-            'cascade_note': cascade_note(raws, d0, hourly_key=hourly_key),
+            'cascade_note': cascade_note(raws, d0, hourly_key=hourly_key) + (
+                ' 最高・最低はメンバー極値の平均（アンサンブル平均系列の極値ではない）。'
+                if flavour != 'aifs' else
+                ' AIFSの最高・最低はメンバー極値そのもので、メンバー平均系列の極値とは統計が異なる。'),
             'title_suffix': title_suffix, 'confidence_source': ens_name,
             'cities': cities, 'emoji_expected': emoji_expected}
     reports['emoji_composited'] = emoji_expected

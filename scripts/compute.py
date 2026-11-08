@@ -37,11 +37,20 @@ def hazard_flags(pm2_5_max, pm10_max, surface_temperature_min):
     }
 
 
-def frost_agreement(ifs_surface_min, gfs_soil_min):
-    """Whether the ECMWF IFS and NOAA GFS frost limbs agree for the day."""
-    if ifs_surface_min is None or gfs_soil_min is None:
-        return None
-    return 'agree' if (ifs_surface_min <= 0) == (gfs_soil_min <= 0) else 'disagree'
+def frost_crosscheck(ifs_surface_min, gfs_soil_min):
+    """Structured frost cross-check between NON-EQUIVALENT variables.
+
+    The IFS limb is the ground-surface (skin) temperature; the GFS limb is
+    its 0–10 cm soil-layer temperature — a different physical quantity at
+    a different level. The GFS value therefore cannot validate the IFS
+    frost flag; it is contextual only (review fix, 2026-11-08).
+    """
+    return {'ifs_surface_min_c': ifs_surface_min,
+            'gfs_variable': 'soil_temperature_0_to_10cm',
+            'gfs_min_c': gfs_soil_min,
+            'equivalent_variables': False,
+            'relation': 'contextual_only',
+            'gfs_also_below_zero': (gfs_soil_min <= 0) if gfs_soil_min is not None else None}
 
 
 def _kp_values(text):
@@ -126,12 +135,66 @@ def parse_space_weather(sources):
         if isinstance(value, str):
             text += value + '\n'
     g_scales = [int(m) for m in re.findall(r'\bG([0-5])\b', text)]
+
+    def _alert_scales():
+        """R/S/G scales from ISSUED alerts, freshness-windowed.
+
+        services.swpc.noaa.gov/products/alerts.json carries about a
+        month of messages: a raw scan would report last month's G3 as
+        today's. Only alerts issued within 72 hours before the newest
+        alert count, probability-table lines (with %) are skipped, and
+        range labels (R1-R2) never match. The geomagnetic scale also
+        takes the outlook texts' own maximum (max_g_scale_in_outlook).
+        """
+        if not isinstance(alerts, list) or not alerts:
+            return {}
+        stamps = []
+        for a in alerts:
+            if isinstance(a, dict) and a.get('issue_datetime'):
+                try:
+                    stamps.append(parse_time(str(a['issue_datetime']).replace(' ', 'T')))
+                except Exception:
+                    pass
+        if not stamps:
+            return {}
+        newest = max(stamps)
+        out = {}
+        for a in alerts:
+            if not isinstance(a, dict) or not a.get('issue_datetime'):
+                continue
+            try:
+                when = parse_time(str(a['issue_datetime']).replace(' ', 'T'))
+            except Exception:
+                continue
+            if newest - when > dt.timedelta(hours=72):
+                continue
+            for line in str(a.get('message') or '').splitlines():
+                if '%' in line:
+                    continue
+                for letter in 'RSG':
+                    for m in re.findall(rf'\b{letter}([0-5])\b(?!-)', line):
+                        out[letter] = max(out.get(letter, 0), int(m))
+        return out
+
+    alert_scales = _alert_scales()
+    cme_arrivals = []
+    for line in text.splitlines():
+        low = line.lower()
+        if 'cme' in low and ('arrival' in low or 'arrive' in low or 'impact' in low):
+            snippet = ' '.join(line.split())[:160]
+            if snippet and snippet not in cme_arrivals:
+                cme_arrivals.append(snippet)
     kp_values = _kp_values(text)
     warning_ids = [p for p in product_ids if p and (p.startswith('WAR') or p.startswith('ALT'))]
     max_g = max(g_scales) if g_scales else None
     return {'alerts_count': len(product_ids) if isinstance(alerts, list) else None,
             'alert_product_ids': product_ids,
             'warning_or_alert_ids': warning_ids,
+            'scales': {'radio_blackout_R': alert_scales.get('R'),
+                       'radiation_storm_S': alert_scales.get('S'),
+                       'geomagnetic_G': max([v for v in (alert_scales.get('G'), max(g_scales) if g_scales else None) if v is not None], default=None),
+                       'basis': 'issued alerts within 72 h before the newest alert (alerts.json spans about a month); geomagnetic also takes the outlook texts maximum'},
+            'cme_arrivals': cme_arrivals[:4],
             'max_g_scale_in_outlook': max_g,
             'max_kp_in_outlook': max(kp_values) if kp_values else None,
             'extreme': bool(warning_ids) or (max_g is not None and max_g >= 2),
@@ -326,6 +389,123 @@ def snow_probability(city, start, end):
             'model': source.get('model'), 'method': 'ensemble member fraction, independently of rain probability'}
 
 
+def fog_assessment(city, start, end):
+    """Visibility reduction classified by cause, not by visibility alone.
+
+    Fog requires the low-visibility hours themselves to be near
+    saturation (relative humidity >= 95%, a dew-point spread <= 1 °C, or
+    dense low cloud at those hours). Visibility below 1,000 m without
+    that corroboration is reduced visibility of undetermined cause and
+    is never labelled fog (review fix, 2026-11-08).
+    """
+    h = city['hourly']
+    vis = dict(select(h, 'visibility', start, end))
+    if len(vis) != 24:
+        return {'ready': False, 'valid_slots': len(vis)}
+    rh = dict(select(h, 'relative_humidity_2m', start, end))
+    dew = dict(select(h, 'dew_point_2m', start, end))
+    temp = dict(select(h, 'temperature_2m', start, end))
+    low_cloud = dict(select(h, 'cloud_cover_low', start, end))
+    low_hours = [t for t, v in vis.items() if v < 1000]
+    rh_low = [rh[t] for t in low_hours if t in rh]
+    spreads = [temp[t] - dew[t] for t in low_hours if t in temp and t in dew]
+    cloud_low = [low_cloud[t] for t in low_hours if t in low_cloud]
+    corroborated = bool(low_hours) and (
+        (rh_low and max(rh_low) >= 95) or (spreads and min(spreads) <= 1.0)
+        or (cloud_low and max(cloud_low) >= 90))
+    mist_hours = [t for t, v in vis.items() if 1000 <= v < 5000]
+    rh_mist = [rh[t] for t in mist_hours if t in rh]
+    if low_hours and corroborated:
+        classification = 'fog'
+    elif low_hours:
+        classification = 'visibility_reduced_cause_undetermined'
+    elif mist_hours and rh_mist and max(rh_mist) >= 90:
+        classification = 'mist'
+    else:
+        classification = 'none'
+    return {'ready': True, 'visibility_min_m': round(min(vis.values())),
+            'hours_below_1000m': len(low_hours),
+            'max_rh_at_low_hours_pct': round(max(rh_low), 1) if rh_low else None,
+            'min_dewpoint_spread_at_low_hours_c': round(min(spreads), 2) if spreads else None,
+            'max_low_cloud_at_low_hours_pct': round(max(cloud_low)) if cloud_low else None,
+            'corroborated': corroborated, 'classification': classification,
+            'basis': 'visibility with humidity, dew-point spread and low cloud at the same hours; official observations or advisories may corroborate further at report time'}
+
+
+def urban_inundation_screen(city, start, end):
+    """Rainfall-rate screening for urban (pluvial) inundation.
+
+    A screening statistic from the forecast's own hourly rainfall — NOT
+    an official warning and NOT a river-flood assessment. Kept distinct
+    from river flooding; a negative screen, and equally an empty
+    official warning feed, never establishes safety (review fix,
+    2026-11-08).
+    """
+    rows = select(city['hourly'], 'precipitation', start, end, accumulated=True)
+    if len(rows) != 24:
+        return {'ready': False, 'valid_slots': len(rows)}
+    vals = [v for _, v in rows]
+    max1 = max(vals)
+    max3 = max(sum(vals[i:i + 3]) for i in range(len(vals) - 2))
+    return {'ready': True, 'max_1h_mm': round(max1, 1), 'max_3h_mm': round(max3, 1),
+            'screen_positive': bool(max1 >= 30 or max3 >= 50),
+            'thresholds': 'max 1h >= 30 mm or max 3h >= 50 mm',
+            'basis': 'rainfall-rate screening of the IFS hourly precipitation; not an official warning; river flooding is assessed separately'}
+
+
+def _series_stats(times, values):
+    pairs = [(t, v) for t, v in zip(times or [], values or []) if v is not None]
+    if not pairs:
+        return None
+    hi = max(pairs, key=lambda p: p[1])
+    return {'maximum': round(hi[1], 3), 'time_of_maximum_utc': hi[0]}
+
+
+def coastal_assessment(raw_city):
+    """Datum-safe coastal assessment (review fix, 2026-11-08).
+
+    The STOFS combined water level is compared ONLY with the STOFS
+    model's own astronomical tide (one model, one datum). Official tide
+    tables (JMA DL, HKO, CWA datums) are never subtracted from STOFS
+    levels: their events give timing and heights on their own stated
+    datum, and the STOFS surge residual is always reported separately.
+    """
+    cf = raw_city.get('coastal_forecast') or {}
+    out = {'stofs_ready': bool(cf.get('ready')),
+           'datum': cf.get('datum'),
+           'surge_residual': _series_stats(cf.get('time'), cf.get('surge_residual')),
+           'combined_water_level': _series_stats(cf.get('time'), cf.get('combined_water_level'))}
+    tide = _series_stats(cf.get('time'), cf.get('astronomical_tide'))
+    out['stofs_astronomical_tide'] = tide
+    if tide and out['combined_water_level']:
+        out['exceedance_over_model_tide_m'] = round(
+            out['combined_water_level']['maximum'] - tide['maximum'], 3)
+        out['exceedance_basis'] = "same STOFS model datum (combined level vs the model's own astronomical tide)"
+    else:
+        out['exceedance_over_model_tide_m'] = None
+        out['exceedance_basis'] = ('unavailable: no STOFS astronomical-tide series for this city '
+                                   '(Hong Kong comes from the STOFS points file, which carries no tide field); '
+                                   'the surge residual stands alone')
+    official = raw_city.get('astronomical_tide') or {}
+    events = list(official.get('events') or [])
+    if not events and official.get('time') and official.get('height'):
+        pts = [(t, v) for t, v in zip(official['time'], official['height']) if v is not None]
+        for i in range(1, len(pts) - 1):
+            if pts[i][1] >= pts[i - 1][1] and pts[i][1] > pts[i + 1][1]:
+                events.append({'time': pts[i][0], 'kind': 'high', 'height': pts[i][1],
+                               'derived': 'turning point of the official hourly series'})
+            elif pts[i][1] <= pts[i - 1][1] and pts[i][1] < pts[i + 1][1]:
+                events.append({'time': pts[i][0], 'kind': 'low', 'height': pts[i][1],
+                               'derived': 'turning point of the official hourly series'})
+    out['official_tide'] = {
+        'station': official.get('station'), 'datum': official.get('datum') or official.get('datums'),
+        'units': official.get('units'), 'ready': bool(official.get('ready')),
+        'events': events,
+        'datum_compatible_with_stofs': False,
+        'use': 'event timing and heights on the official datum only; never subtracted from STOFS levels'}
+    return out
+
+
 def compute_city(city, start, end):
     h = city['hourly']
     result = {v: value_range(select(h, v, start, end)) for v in (
@@ -356,15 +536,30 @@ def compute_city(city, start, end):
     except Exception as exc:
         result['wbgt'] = {'ready': False, 'reason': f'{type(exc).__name__}: {exc}'}
     result['snow_probability'] = snow_probability(city, start, end)
+    result['fog'] = fog_assessment(city, start, end)
+    result['urban_inundation'] = urban_inundation_screen(city, start, end)
+    sd = result.get('snow_depth') or {}
+    result['snow_depth_cm'] = (
+        {'ready': True, 'minimum': round(sd['minimum'] * 100, 1),
+         'maximum': round(sd['maximum'] * 100, 1), 'units': 'cm',
+         'source_units': 'm (Open-Meteo snow_depth)'} if sd.get('ready') else {'ready': False})
     air = city['raw_air_quality']
     result['aqi'] = value_range(select(air, 'us_aqi', start, end))
-    components = []
-    for field in air:
-        if field.startswith('us_aqi_'):
-            values = select(air, field, start, end)
-            if len(values) == 24:
-                components.extend((value, field, t.isoformat()) for t, value in values)
-    result['aqi']['leading_component_at_worst_hour'] = max(components) if components else None
+    aqi_points = select(air, 'us_aqi', start, end)
+    worst = max(aqi_points, key=lambda p: p[1]) if aqi_points else None
+    at_worst = []
+    if worst is not None:
+        for field in air:
+            if field.startswith('us_aqi_'):
+                values = dict(select(air, field, start, end))
+                if worst[0] in values:
+                    at_worst.append((values[worst[0]], field, worst[0].isoformat()))
+        at_worst.sort(reverse=True)
+    result['aqi']['worst_hour_utc'] = worst[0].isoformat() if worst else None
+    result['aqi']['components_at_worst_hour'] = at_worst
+    result['aqi']['leading_component_at_worst_hour'] = at_worst[0] if at_worst else None
+    result['aqi']['second_component_at_worst_hour'] = (
+        at_worst[1] if len(at_worst) > 1 and at_worst[0][0] - at_worst[1][0] <= 10 else None)
     result['uv_index'] = value_range(select(air, 'uv_index', start, end))
     result['dust'] = value_range(select(air, 'dust', start, end))
     result['pm2_5'] = value_range(select(air, 'pm2_5', start, end))
@@ -393,11 +588,12 @@ def compute_city(city, start, end):
             if result['temperature_2m'].get('ready') and gfs_temp.get('ready') else None,
         'temperature_min_difference_c': round(abs(result['temperature_2m']['minimum'] - gfs_temp['minimum']), 2)
             if result['temperature_2m'].get('ready') and gfs_temp.get('ready') else None,
-        'frost_agreement': frost_agreement(ifs_surface_min, gfs_soil_min),
+        'frost_crosscheck': frost_crosscheck(ifs_surface_min, gfs_soil_min),
         'note': 'NOAA GFS (gfs_seamless via Open-Meteo) as the independent second model; '
                 'the report values remain the ECMWF IFS ones unless the official local '
-                'observatory forecast contradicts them. The GFS frost limb uses its '
-                '0–10 cm soil layer against the IFS surface (skin) temperature.'}
+                'observatory forecast contradicts them. The GFS frost limb is its '
+                '0–10 cm soil-layer temperature, NOT equivalent to the IFS surface '
+                '(skin) temperature: contextual only, never a validation of the frost flag.'}
     result['report_digest'] = {
         'dominant_weather_code': Counter(codes).most_common(1)[0][0] if codes else None,
         'humidity_mean': round(sum(humidity) / len(humidity), 1) if len(humidity) == 24 else None,
@@ -407,11 +603,18 @@ def compute_city(city, start, end):
         'wind_direction_at_max_deg': directions.get(max_wind_time) if max_wind_time else None,
         'wind_direction_at_max_compass': compass16(directions.get(max_wind_time)) if max_wind_time else None,
         'wbgt_band': wbgt_band,
+        'wind_speed_mean_ms': round(sum(wind.values()) / len(wind), 2) if len(wind) == 24 else None,
+        'wind_gust_max_ms': result['wind_gusts_10m'].get('maximum') if result['wind_gusts_10m'].get('ready') else None,
+        'wind_gust_max_time_utc': result['wind_gusts_10m'].get('time_of_maximum_utc') if result['wind_gusts_10m'].get('ready') else None,
         'hazard_flags': hazard_flags(
             result['pm2_5'].get('maximum') if result['pm2_5'].get('ready') else None,
             result['pm10'].get('maximum') if result['pm10'].get('ready') else None,
             result['surface_temperature'].get('minimum') if result['surface_temperature'].get('ready') else None),
     }
+    result['window_conventions'] = {
+        'instantaneous_fields': '[start,end) — the value stamped at the window start is included; the value at the end is not',
+        'preceding_hour_fields': '(start,end] — precipitation, rain, snowfall, wind_gusts_10m, precipitation_probability and the snowfall-probability member totals cover the hour ending at their timestamp',
+        'snow_probability_event': (result.get('snow_probability') or {}).get('event')}
     return result
 
 
@@ -467,6 +670,35 @@ def regional_digest(raw):
     return digest
 
 
+def _track_assessment(samples, pressure_key):
+    """Structured verification level for one model's track check.
+
+    The samples are single-point MSLP/wind values AT the JTWC forecast
+    positions: they can show the model's field is coherent with the
+    warning (a deep low at the warned positions), but they cannot locate
+    a model centre, so no position difference is ever computed and
+    'consistent_with' never means 'confirmed' (review fix, 2026-11-08).
+    """
+    if not isinstance(samples, list) or not samples:
+        return {'retrieved': False, 'agreement': 'not_assessed'}
+    pressures = [s.get(pressure_key) for s in samples
+                 if isinstance(s, dict) and s.get(pressure_key) is not None]
+    if not pressures:
+        return {'retrieved': True, 'samples': len(samples), 'samples_with_pressure': 0,
+                'agreement': 'inconclusive'}
+    frac = sum(1 for v in pressures if v <= 1005) / len(pressures)
+    return {'retrieved': True, 'samples': len(samples),
+            'samples_with_pressure': len(pressures),
+            'point_pressure_min_hpa': round(min(pressures), 1),
+            'point_pressure_median_hpa': round(statistics.median(pressures), 1),
+            'fraction_points_at_or_below_1005hpa': round(frac, 2),
+            'centre_identified': False,
+            'centre_identification_basis': 'single-point samples at the JTWC positions cannot locate a model centre',
+            'position_difference_km': None,
+            'agreement': 'consistent_with' if (min(pressures) <= 1000 and frac >= 0.5) else 'inconclusive',
+            'grid_resolution': '0.25 degrees (about 28 km): adequate for a coherence check against a named warning area, not for centre fixing'}
+
+
 def compute_bundle(raw):
     start, end = parse_time(raw['window_start_utc']), parse_time(raw['window_end_utc'])
     cities = {}
@@ -475,11 +707,17 @@ def compute_bundle(raw):
             cities[name] = compute_city(raw['cities'][name], start, end)
         except Exception as exc:
             cities[name] = {'error': f'{type(exc).__name__}: {exc}'}
+    for name in list(cities):
+        if not cities[name].get('error'):
+            try:
+                cities[name]['coastal_assessment'] = coastal_assessment(raw['cities'][name])
+            except Exception as exc:
+                cities[name]['coastal_assessment'] = {'error': f'{type(exc).__name__}: {exc}'}
     checks = {}
     for name, city in cities.items():
         checks[name] = not city.get('error') and all(
-            v.get('ready') is True for v in city.values()
-            if isinstance(v, dict) and 'ready' in v)
+            v.get('ready') is True for k, v in city.items()
+            if isinstance(v, dict) and 'ready' in v and k not in ('fog', 'urban_inundation'))
     sources = raw.get('sources', {})
     ecmwf_probe = sources.get('ecmwf/cyclone_product', {})
     ecmwf_response = ecmwf_probe.get('response')
@@ -491,7 +729,10 @@ def compute_bundle(raw):
         for name, source in sources.items():
             if name.startswith(prefix):
                 body = source.get('response') or {}
-                track_checks[name] = {'ok': source.get('ok'), 'samples': body.get('samples')}
+                samples = body.get('samples')
+                key = 'gfs_pressure_msl_hpa' if prefix.startswith('gfs') else 'ecmwf_pressure_msl_hpa'
+                track_checks[name] = {'ok': source.get('ok'), 'samples': samples,
+                                      'assessment': _track_assessment(samples, key)}
     cyclone_watch = {
         **parse_jtwc_abpw(sources.get('jtwc/outlook', {}).get('response')),
         'warning_sources': warning_names,

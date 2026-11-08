@@ -119,9 +119,9 @@ class RenderOutlookTests(unittest.TestCase):
         self.assertIn('| 温帯低気圧 | 満洲に発達した低気圧の兆候（格子値） |', t4)
         self.assertIn('満洲 格子最小 998hPa（44.1N 126.9E・11/10 00:00UTC）', t4)
         self.assertIn('日本海 格子最小 1005hPa（38.2N 133.5E・11/09 06:00UTC）', t4)
-        self.assertIn('| 宇宙天気 | 地磁気嵐の見込み（G2級）。4都市の日常生活への直接の影響は限定的 '
+        self.assertIn('| 宇宙天気 | 地磁気嵐 G2級。4都市の日常生活への直接の影響は限定的 '
                       '| Kp最大 5・柿岡K最大 3 |', lines)
-        self.assertIn('| ECMWF検証 | ECMWF製品は取得不可。進路はGFS・ECMWF開放データのサンプルで代替確認 '
+        self.assertIn('| ECMWF検証 | ECMWF製品は取得不可。進路サンプルで部分的に代替確認 '
                       '| プロダクト HTTP 404・6基準時刻遡及｜進路サンプル GFS 有・ECMWF開放データ 有 |', lines)
         self.assertFalse(any('判定' in ln for ln in lines))
 

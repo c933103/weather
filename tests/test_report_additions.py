@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from collect import combined_temperature, jtwc_system_ids, parse_warning_track
-from compute import (chart_confidence_for_city, compass16, frost_agreement,
+from compute import (chart_confidence_for_city, compass16, frost_crosscheck,
                      grade_from_spread, hazard_flags, parse_jtwc_abpw,
                      parse_space_weather)
 from specialists import extract_temperature_ensemble
@@ -271,11 +271,18 @@ class SpaceWeatherTests(unittest.TestCase):
 
 
 class FrostAgreementTests(unittest.TestCase):
-    def test_agreement(self):
-        self.assertEqual(frost_agreement(-1.0, 0.5), 'disagree')
-        self.assertEqual(frost_agreement(-1.0, -0.5), 'agree')
-        self.assertEqual(frost_agreement(3.0, 2.0), 'agree')
-        self.assertIsNone(frost_agreement(None, -1.0))
+    def test_crosscheck_is_contextual_only(self):
+        # The GFS limb is a 0-10 cm soil temperature, NOT equivalent to
+        # the IFS ground-surface (skin) temperature: it can never agree
+        # or disagree with the frost flag, only accompany it.
+        got = frost_crosscheck(-1.0, 0.5)
+        self.assertFalse(got['equivalent_variables'])
+        self.assertEqual(got['relation'], 'contextual_only')
+        self.assertEqual(got['gfs_variable'], 'soil_temperature_0_to_10cm')
+        self.assertFalse(got['gfs_also_below_zero'])
+        self.assertTrue(frost_crosscheck(-1.0, -0.5)['gfs_also_below_zero'])
+        self.assertIsNone(frost_crosscheck(None, -1.0)['ifs_surface_min_c'])
+        self.assertIsNone(frost_crosscheck(-1.0, None)['gfs_also_below_zero'])
 
 
 if __name__ == '__main__':

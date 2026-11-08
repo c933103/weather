@@ -845,6 +845,8 @@ def collect(day, out):
     long_end = start+dt.timedelta(hours=384)
     chart_end = start+dt.timedelta(days=28)
     root = {'schema': 'east_asia_weather_raw_v3', 'phase': 'collection',
+            'reader': {'min_reader_version': 2,
+                       'pin': 'reader scripts are used at this collector commit, never refreshed from floating main'},
             'target_date_jst': day.isoformat(), 'collection_utc': now.isoformat(),
             'window_start_utc': start.isoformat(), 'window_end_utc': end.isoformat(),
             'long_end_utc': long_end.isoformat(), 'chart_end_utc': chart_end.isoformat(), 'cities': {}, 'sources': {},
@@ -1136,7 +1138,7 @@ def collect(day, out):
     files['regional'] = {'path': 'latest/regional.json', 'bytes': file.stat().st_size,
                          'sha256': hashlib.sha256(file.read_bytes()).hexdigest()}
     manifest = {k: root[k] for k in ('schema', 'target_date_jst', 'collection_utc', 'window_start_utc',
-               'window_end_utc', 'long_end_utc', 'chart_end_utc', 'collector_commit', 'workflow_run_id', 'quality')}
+               'window_end_utc', 'long_end_utc', 'chart_end_utc', 'collector_commit', 'workflow_run_id', 'quality', 'reader')}
     manifest['files'] = files
     manifest['raw_artifact'] = {'name': f'weather-raw-{os.getenv("GITHUB_RUN_ID", day.isoformat())}', 'filename': raw_path.name,
                                 'bytes': raw_path.stat().st_size,

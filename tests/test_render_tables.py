@@ -47,7 +47,7 @@ class RenderTablesTests(unittest.TestCase):
         self.assertIn('| 暑寒 | ― | ― | 15.2 ほぼ安全 | 15.2 ほぼ安全 |', lines)
         self.assertIn('| 湿度 | 62% (49~74) | 62% (49~74) | 62% (49~74) | 62% (49~74) |', lines)
         self.assertIn('| 降水 | 63% 0.5mm | 63% 0.5mm | 63% 0.5mm | 63% 0.5mm |', lines)
-        self.assertIn('| 風 | 15km/h 北 | 15km/h 北 | 15km/h 北 | 15km/h 北 |', lines)
+        self.assertIn('| 風 | 最大15km/h 北 | 最大15km/h 北 | 最大15km/h 北 | 最大15km/h 北 |', lines)
         self.assertFalse(any('モデル差' in ln for ln in lines))
 
     def test_table2_cells_and_tokki_floor(self):
