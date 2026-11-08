@@ -10,12 +10,13 @@ import datetime as dt
 import math
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from compute import (coastal_assessment, compute_city, parse_space_weather,
                      _track_assessment)
-from validate import build_validation, check_products
+from validate import build_validation, check_products, check_products
 import render_tables as rt
 from chart_data import build_chart_data, extrema_by_date, extrema_runs
 
@@ -287,6 +288,36 @@ class RenderCellTests(unittest.TestCase):
         self.assertIn('満潮', cell)
         self.assertIn('180cm', cell)
         self.assertIn('干潮', cell)
+
+
+class ProductCheckTests(unittest.TestCase):
+    def _products(self, tmp, tables):
+        latest = Path(tmp)
+        for key, text in tables.items():
+            (latest / f'{key}.md').write_text(text, encoding='utf-8')
+        return check_products({}, latest)
+
+    def test_table3_needs_no_city_header(self):
+        # Regression (production, 2026-11-08): a valid Cempaka table was
+        # flagged invalid because it names warning areas, not cities.
+        t3 = ('| 名称 | 現在位置・強度 | 移動 | 脅威・最接近 |\n'
+              '|---|---|---|---|\n'
+              '| CEMPAKA（31W・TY） | 21.4N 138.7E・最大65kt | W 12kt | '
+              '火山列島 約40km・高波26ft |\n')
+        with tempfile.TemporaryDirectory() as tmp:
+            got = self._products(tmp, {'table3': t3})
+        self.assertEqual(got['table3']['status'], 'ok')
+
+    def test_table3_no_cyclone_line_is_valid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            got = self._products(tmp, {'table3': '熱帯低気圧：なし\n'})
+        self.assertEqual(got['table3']['status'], 'ok')
+
+    def test_table1_still_needs_city_header(self):
+        t1 = '| | a | b |\n|---|---|---|\n| 気温 | 1 | 2 |\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            got = self._products(tmp, {'table1': t1})
+        self.assertEqual(got['table1']['status'], 'invalid')
 
 
 class ValidationTests(unittest.TestCase):

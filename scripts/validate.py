@@ -167,7 +167,30 @@ def check_products(products, latest):
         text = path.read_text(encoding='utf-8')
         lines = [ln for ln in text.splitlines() if ln.strip()]
         pipe_rows = sum(1 for ln in lines if ln.startswith('|'))
-        ok = pipe_rows >= 3 and '香港' in text and '<br>' not in text
-        out[key] = _item('ok' if ok else 'invalid',
-                         f'{pipe_rows} pipe rows; city headers present; no <br>' if ok else 'table shape check failed')
+        problems = []
+        if '<br>' in text:
+            problems.append('<br> present')
+        if key in ('table1', 'table2'):
+            # City-column tables: the fixed city header must be present.
+            if pipe_rows < 3:
+                problems.append(f'only {pipe_rows} pipe rows')
+            if '香港' not in text:
+                problems.append('city header 香港 absent')
+        elif key == 'table3':
+            # Cyclone table: either the explicit no-system line, or a
+            # pipe table headed by 名称. It names warning AREAS, not the
+            # report cities, so no city header is required.
+            if text.strip() != '熱帯低気圧：なし':
+                if pipe_rows < 2:
+                    problems.append(f'only {pipe_rows} pipe rows')
+                if '名称' not in text:
+                    problems.append('cyclone header 名称 absent')
+        else:  # table4
+            if pipe_rows < 3:
+                problems.append(f'only {pipe_rows} pipe rows')
+            if '項目' not in text:
+                problems.append('outlook header 項目 absent')
+        out[key] = _item('invalid' if problems else 'ok',
+                         '; '.join(problems) if problems
+                         else f'{pipe_rows} pipe rows; shape ok; no <br>')
     return out
