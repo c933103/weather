@@ -33,9 +33,12 @@ def parse_utc(text):
     return d.astimezone(timezone.utc)
 
 
-def get_hourly(root, city):
+def get_hourly(root, city, hourly_key='chart_hourly'):
     rec = (root.get('cities') or {}).get(city, {})
-    hourly = rec.get('chart_hourly') or rec.get('hourly') or rec.get('forecast_hourly') or {}
+    if hourly_key == 'chart_hourly':
+        hourly = rec.get('chart_hourly') or rec.get('hourly') or rec.get('forecast_hourly') or {}
+    else:
+        hourly = rec.get(hourly_key) or {}
     times = hourly.get('time') or hourly.get('time_utc') or []
     values = hourly.get('temperature_2m') or []
     model = hourly.get('model') or rec.get('model') or ''
@@ -154,12 +157,13 @@ def wmo_emoji(c):
 
 CASCADE_LABELS={'ecmwf_ifs_9km':'ECMWF IFS 9km',
                 'ecmwf_ifs025_ensemble_mean':'IFSアンサンブル平均',
+                'ecmwf_aifs025_ensemble_mean':'ECMWF AIFSアンサンブル平均',
                 'ecmwf_ec46_ensemble_mean_36km':'EC46アンサンブル平均'}
 
 
-def cascade_segments(row,tz,day0=None):
+def cascade_segments(row,tz,day0=None,hourly_key='chart_hourly'):
     """Contiguous source-model segments of the chart series, in local dates."""
-    hr=row.get('chart_hourly') or {}
+    hr=row.get(hourly_key) or {}
     ts=hr.get('time') or []; models=hr.get('sample_model') or []
     segments=[]
     for t,m in zip(ts,models):
@@ -174,11 +178,11 @@ def cascade_segments(row,tz,day0=None):
     return segments
 
 
-def cascade_note(raws,day0=None):
+def cascade_note(raws,day0=None,hourly_key='chart_hourly'):
     """The reliability cascade actually used, labelled beneath the chart."""
     per_city={}
     for city in ('Tokyo Minato Ward','Hong Kong'):
-        segs=cascade_segments(raws.get(city) or {},SITES[city][1],day0)
+        segs=cascade_segments(raws.get(city) or {},SITES[city][1],day0,hourly_key)
         per_city[city]=[(CASCADE_LABELS.get(m,m),a,b) for m,a,b in segs]
     def fmt(segs):
         return ' → '.join(f'{a.strftime("%m/%d")}–{b.strftime("%m/%d")} {label}' for label,a,b in segs)
@@ -216,8 +220,8 @@ def member_probability_icon(probs):
 ec46_probability_icon = member_probability_icon
 
 
-def daily_icon(row,day,tz):
-    hr=row.get('chart_hourly') or row.get('hourly') or {}
+def daily_icon(row,day,tz,hourly_key='chart_hourly',ens_key='temperature_ensemble'):
+    hr=row.get(hourly_key) or (row.get('hourly') or {} if hourly_key=='chart_hourly' else {})
     ts=hr.get('time') or [];wc=hr.get('weather_code') or []
     if len(ts)!=len(wc):return '―'
     # EC46-sourced days never use the ensemble mean's weather_code (it reads
@@ -227,11 +231,12 @@ def daily_icon(row,day,tz):
         day_models=[m for t,m in zip(ts,models) if parse_utc(t).astimezone(tz).date()==day]
         if day_models and sum(1 for m in day_models if m and 'ec46' in m)>len(day_models)/2:
             return member_probability_icon((row.get('ec46_daily') or {}).get(day.isoformat()))
-        if day_models and sum(1 for m in day_models if m and 'ifs025_ensemble' in m)>len(day_models)/2:
-            # IFS-ENS-sourced days likewise never use a mean-state code (the
-            # ENS tier carries none anyway); member probabilities instead.
+        if day_models and sum(1 for m in day_models if m and 'ensemble' in m)>len(day_models)/2:
+            # Ensemble-mean-sourced days (IFS ENS or AIFS ENS) likewise never
+            # use a mean-state code (the ENS tier carries none anyway);
+            # member probabilities instead.
             return member_probability_icon(
-                ((row.get('temperature_ensemble') or {}).get('daily') or {}).get(day.isoformat()))
+                ((row.get(ens_key) or {}).get('daily') or {}).get(day.isoformat()))
     samples=[]
     for t,c in zip(ts,wc):
         d=parse_utc(t).astimezone(tz)
@@ -254,13 +259,25 @@ EMOJI_ASSETS = {'☀': '2600', '🌤': '1f324', '☁': '2601', '🌫': '1f32b',
 CITY_ORDER = ('Tokyo Minato Ward', 'Hong Kong')
 
 
-def build_chart_data(raw, target_day):
+def build_chart_data(raw, target_day, flavour='ifs'):
     """Derive everything the R chart draws. Returns (chart_data, reports).
 
     Raises on the same conditions the retired in-process renderer raised:
     a synthetic/test fixture, a non-ECMWF hourly source, or no verified
-    consecutive day-high / night-low windows at all.
+    consecutive day-high / night-low windows at all. flavour='aifs' derives
+    the same chart from the AIFS cascade (AIFS ENS into the EC46 tail),
+    with AIFS-ensemble confidence grades.
     """
+    if flavour == 'aifs':
+        hourly_key, mext_key, ens_key = ('aifs_chart_hourly',
+                                         'aifs_member_extrema', 'aifs_ensemble')
+        ens_name = 'AIFSアンサンブル'
+        title_suffix = '（AIFS）'
+    else:
+        hourly_key, mext_key, ens_key = ('chart_hourly', 'member_extrema',
+                                         'temperature_ensemble')
+        ens_name = 'IFSアンサンブル'
+        title_suffix = ''
     if raw.get('synthetic') is True or raw.get('test_fixture') is True:
         raise ValueError('Synthetic data cannot be issued as a weather chart.')
     d0 = date.fromisoformat(target_day)
@@ -274,24 +291,26 @@ def build_chart_data(raw, target_day):
     total_segments = 0
     emoji_expected = 0
     for city in CITY_ORDER:
-        arr, model = get_hourly(raw, city)
+        arr, model = get_hourly(raw, city, hourly_key)
         row = (raw.get('cities') or {}).get(city, {})
         highs, lows = extrema_by_date(arr, d0, SITES[city][1],
-                                      member_extrema=row.get('member_extrema'))
+                                      member_extrema=row.get(mext_key))
         runs = extrema_runs(highs, lows)
         total_segments += len(runs)
         bounds += list(highs.values()) + list(lows.values())
         grades = {}
         if chart_confidence_for_city is not None:
             try:
-                grades = chart_confidence_for_city(row, d0, days=28)
+                grades = chart_confidence_for_city(row, d0, days=28,
+                                                   ensemble_key=ens_key)
             except Exception:
                 grades = {}
         icons = []
         grade_list = []
         for i in range(28):
             dd = d0 + timedelta(days=i)
-            ch = daily_icon(row, dd, SITES[city][1])
+            ch = daily_icon(row, dd, SITES[city][1], hourly_key=hourly_key,
+                            ens_key=ens_key)
             icons.append({'emoji': ch, 'asset': EMOJI_ASSETS.get(ch)})
             if ch != '―':
                 emoji_expected += 1
@@ -312,7 +331,8 @@ def build_chart_data(raw, target_day):
             'target_date': target_day,
             'dates': [(d0 + timedelta(days=i)).strftime('%m/%d') for i in range(28)],
             'y_min': math.floor(min(bounds) - 2), 'y_max': math.ceil(max(bounds) + 2),
-            'cascade_note': cascade_note(raws, d0),
+            'cascade_note': cascade_note(raws, d0, hourly_key=hourly_key),
+            'title_suffix': title_suffix, 'confidence_source': ens_name,
             'cities': cities, 'emoji_expected': emoji_expected}
     reports['emoji_composited'] = emoji_expected
     return data, reports

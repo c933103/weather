@@ -42,6 +42,8 @@ cities <- lapply(d$cities, function(c) list(
 dates <- as.character(unlist(d$dates))
 y_min <- num(d$y_min); y_max <- num(d$y_max)
 cascade_note <- if (is.null(d$cascade_note)) '' else as.character(d$cascade_note)
+title_suffix <- if (is.null(d$title_suffix)) '' else as.character(d$title_suffix)
+confidence_source <- if (is.null(d$confidence_source)) 'IFSアンサンブル' else as.character(d$confidence_source)
 
 CITY_COLOURS <- c('#1F77B4', '#FF7F0E')  # matplotlib C0/C1: Tokyo, Hong Kong
 FONT <- 'Noto Sans CJK JP'
@@ -165,10 +167,10 @@ draw_figure <- function() {
   txt <- function(label, x, y, size, ...) grid.text(
     label, x = unit(x, 'in'), y = unit(y, 'in'), just = 'left',
     gp = gpar(fontfamily = FONT, fontsize = size, ...))
-  txt(paste0('香港・東京都港区｜28日間気温予報'), PANEL$x, 0.947 * H, 20, fontface = 'bold')
+  txt(paste0('香港・東京都港区｜28日間気温予報', title_suffix), PANEL$x, 0.947 * H, 20, fontface = 'bold')
   txt('実線：日中最高（当日）／破線：夜間最低（日付間・当日正午～翌日正午の最低）｜淡色＝高低の連続帯',
       PANEL$x, 0.908 * H, 10.8)
-  txt('日付位置は時刻を示さない。下段の自信度はIFSアンサンブルの日最高気温の拡散より。気温の接続順は下部のデータ源注記参照。',
+  txt(paste0('日付位置は時刻を示さない。下段の自信度は', confidence_source, 'の日最高気温の拡散より。気温の接続順は下部のデータ源注記参照。'),
       PANEL$x, 0.882 * H, 9.6, col = '#595959')
   for (ri in seq_along(cities)) {
     city <- cities[[ri]]

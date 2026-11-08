@@ -125,7 +125,8 @@ def main():
                 aifs_path.write_bytes(blob)
                 bundle[f'{key}_local_path'] = str(aifs_path)
                 bundle[f'{key}_url'] = base+entry['path']
-    for key, fname in (('table1', 'report_table1.md'), ('table2', 'report_table2.md')):
+    for key, fname in (('table1', 'report_table1.md'), ('table2', 'report_table2.md'),
+                       ('table3', 'report_table3.md'), ('table4', 'report_table4.md')):
         entry = bundle['products'].get(key)
         if entry:
             if entry['path'] != f'latest/{key}.md':
