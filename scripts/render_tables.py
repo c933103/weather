@@ -8,12 +8,15 @@ workflow alongside the chart, leaving the 06:00 run the parts that need
 analysis: the official-forecast contradiction check on 天気， the
 category-by-category 特記 audit (the generated 特記 is the mechanical
 floor — digest flags, visibility, snowfall — to which the run adds the
-official-product, pollen, dust and flood/surge limbs), Message 3's
-judgement cells (the cyclone 脅威 cells, the monsoon and
-extratropical-cyclone interpretation, and the appended 判定 row), and
-verification. Cell rules are the cron's settled ones, encoded once here.
+official-product, pollen, dust and flood/surge limbs), the audit of
+Message 3's generated analysis against the warning remarks and the
+official products (plus the appended 判定 row), and verification.
+Cell rules are the cron's settled ones, encoded once here.
 """
 import math
+import re
+from datetime import datetime, timedelta, timezone
+
 CITY_ORDER = [('Hong Kong', '香港'), ('Taipei', '台北'),
               ('Tokyo Minato Ward', '東京港区'), ('Takamatsu', '高松')]
 
@@ -233,10 +236,164 @@ MOVEMENT_TOKENS = {'NORTHWARD': 'N', 'NORTH-NORTHEASTWARD': 'NNE',
                    'STATIONARY': '停滞', 'QUASI-STATIONARY': '停滞'}
 
 # The report's named warning areas (user, 2026-11-07), each with a
-# representative point for the sample-based closest-approach floor.
+# representative point for closest-approach analysis along the JTWC
+# warning track.
 WATCH_AREAS = [('香港', 22.3, 114.2), ('台湾', 23.8, 121.0),
                ('ルソン海峡', 21.3, 120.9), ('小笠原', 27.1, 142.2),
                ('火山列島', 24.8, 141.3), ('本州', 35.7, 139.8)]
+
+_JST = timezone(timedelta(hours=9))
+_COMPASS16 = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+              'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+_HDR_RE = re.compile(r'PGTW (\d{2})(\d{2})(\d{2})')
+_POS_RE = re.compile(r'WARNING POSITION:\s*\n\s*(\d{2})(\d{2})(\d{2})Z --- NEAR '
+                     r'([\d.]+)([NS]) ([\d.]+)([EW])')
+_MOVE_RE = re.compile(r'MOVEMENT PAST SIX HOURS - (\d+) DEGREES AT (\d+) KTS')
+_WIND_RE = re.compile(r'MAX SUSTAINED WINDS - (\d+) KT, GUSTS (\d+) KT')
+_FCST_RE = re.compile(r'(\d+) HRS, VALID AT:\s*\n\s*(\d{2})(\d{2})(\d{2})Z --- '
+                      r'([\d.]+)([NS]) ([\d.]+)([EW])')
+
+
+def _parse_iso(text):
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(str(text).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+
+
+def _resolve(day, hh, mm, anchor):
+    """Resolve a DDHHMM group against an anchor datetime, choosing the
+    month candidate (previous / current / next) closest to the anchor."""
+    best = None
+    for shift in (-1, 0, 1):
+        total = anchor.year * 12 + (anchor.month - 1) + shift
+        try:
+            cand = datetime(total // 12, total % 12 + 1, day, hh, mm,
+                            tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if best is None or abs(cand - anchor) < abs(best - anchor):
+            best = cand
+    return best
+
+
+def _warning_text(raw, system_id):
+    entry = ((raw or {}).get('sources') or {}).get(
+        f'jtwc/warning_{(system_id or "").lower()}')
+    if isinstance(entry, dict) and entry.get('ok') and entry.get('response'):
+        return entry['response']
+    return None
+
+
+def _parse_warning(text, anchor):
+    """Parse a JTWC warning text into its current position / movement /
+    winds and its forecast track [(valid_utc, lat, lon, max_kt), ...].
+    Returns None when the text carries no parseable warning position."""
+    if not text:
+        return None
+    pos = _POS_RE.search(text)
+    if not pos:
+        return None
+    hdr = _HDR_RE.search(text)
+    ref = anchor
+    if hdr:
+        ref = _resolve(int(hdr.group(1)), int(hdr.group(2)),
+                       int(hdr.group(3)), anchor) or anchor
+
+    def coord(value, hemi, positive):
+        return float(value) if hemi == positive else -float(value)
+
+    valid = _resolve(int(pos.group(1)), int(pos.group(2)),
+                     int(pos.group(3)), ref)
+    lat = coord(pos.group(4), pos.group(5), 'N')
+    lon = coord(pos.group(6), pos.group(7), 'E')
+    wind = _WIND_RE.search(text)
+    max_kt = int(wind.group(1)) if wind else None
+    gust_kt = int(wind.group(2)) if wind else None
+    move = _MOVE_RE.search(text)
+    track = [(valid, lat, lon, max_kt)]
+    for fm in _FCST_RE.finditer(text):
+        fvalid = _resolve(int(fm.group(2)), int(fm.group(3)),
+                          int(fm.group(4)), ref)
+        w2 = _WIND_RE.search(text, fm.end(), fm.end() + 300)
+        track.append((fvalid,
+                      coord(fm.group(5), fm.group(6), 'N'),
+                      coord(fm.group(7), fm.group(8), 'E'),
+                      int(w2.group(1)) if w2 else None))
+    track = [p for p in track if p[0] is not None]
+    track.sort(key=lambda p: p[0])
+    return {'valid': valid, 'lat': lat, 'lon': lon, 'max_kt': max_kt,
+            'gust_kt': gust_kt,
+            'move_deg': int(move.group(1)) if move else None,
+            'move_kt': int(move.group(2)) if move else None,
+            'track': track}
+
+
+def _track_closest(track, alat, alon):
+    """Closest approach of a forecast track to a point, segment-wise.
+    Returns (distance_km, valid_utc_at_closest, interpolated_max_kt)."""
+    if not track:
+        return None
+    if len(track) == 1:
+        _, la, lo, w = track[0]
+        return (_haversine_km(la, lo, alat, alon), track[0][0], w)
+    best = None
+    for (t0, la0, lo0, w0), (t1, la1, lo1, w1) in zip(track, track[1:]):
+        scale = math.cos(math.radians((la0 + la1) / 2.0))
+        ax, ay = lo0 * scale, la0
+        bx, by = lo1 * scale, la1
+        px, py = alon * scale, alat
+        dx, dy = bx - ax, by - ay
+        denom = dx * dx + dy * dy
+        t = 0.0 if denom == 0 else max(
+            0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / denom))
+        dist = _haversine_km(la0 + (la1 - la0) * t, lo0 + (lo1 - lo0) * t,
+                             alat, alon)
+        if best is None or dist < best[0]:
+            when = t0 + (t1 - t0) * t if (t0 and t1) else (t0 or t1)
+            wind = (w0 + (w1 - w0) * t) if (w0 is not None and w1 is not None) \
+                else (w0 if w0 is not None else w1)
+            best = (dist, when, wind)
+    return best
+
+
+def _round10(value):
+    return int(round(value / 10.0)) * 10
+
+
+def _warning_threat(track):
+    """Analyzed threat from the warning forecast track: the closest
+    approach to each named warning area, segment-interpolated, with the
+    JST time and the forecast intensity at closest approach."""
+    per_area = []
+    for label, alat, alon in WATCH_AREAS:
+        got = _track_closest(track, alat, alon)
+        if got:
+            per_area.append((got[0], label, got[1], got[2]))
+    if not per_area:
+        return '―'
+    per_area.sort(key=lambda p: p[0])
+    close = [p for p in per_area if p[0] <= 1000]
+    if not close:
+        return (f"対象地域への接近なし"
+                f"（最接近 {per_area[0][1]} 約{_round10(per_area[0][0])}km）")
+    dist, label, when, wind = close[0]
+    head = f"{label} 約{_round10(dist)}km"
+    if when is not None:
+        head += f"・{when.astimezone(_JST):%m/%d %H:%M}JST"
+    if wind is not None:
+        head += f"・{int(round(wind))}kt級"
+    if len(close) > 1:
+        head += f"・{close[1][1]} 約{_round10(close[1][0])}km"
+    return head
+
+
+def _category_token(max_kt, fallback):
+    if max_kt is None:
+        return fallback
+    return 'TY' if max_kt >= 64 else 'TS' if max_kt >= 34 else 'TD'
 
 
 def _latlon(lat, lon):
@@ -254,60 +411,90 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return 6371.0 * 2 * math.asin(math.sqrt(a))
 
 
-def _threat_floor(cw, system):
-    """Closest sampled approach to a named warning area, from the GFS /
-    ECMWF open-data samples along the warning track. A floor only: the
-    06:00 run replaces it with the judged threat from the warning text."""
-    sid = ((system or {}).get('id') or '').lower()
-    best = None
-    for name, check in ((cw or {}).get('track_checks') or {}).items():
-        if sid and sid not in name:
-            continue
-        for s in (check or {}).get('samples') or []:
-            lat, lon = s.get('latitude'), s.get('longitude')
-            if lat is None or lon is None:
-                continue
-            for label, alat, alon in WATCH_AREAS:
-                dist = _haversine_km(lat, lon, alat, alon)
-                if best is None or dist < best[0]:
-                    best = (dist, label)
-    if best is None:
-        return '―'
-    if best[0] > 1000:
-        return '対象地域から1,000km超（サンプル）'
-    return f"{best[1]} 約{int(round(best[0] / 10.0)) * 10}km（サンプル）"
-
-
-def _system_row(cw, system):
-    token = CATEGORY_TOKENS.get(system.get('category'), system.get('category') or '')
+def _system_row(raw, anchor, system):
+    """One Table 3 row. Position, intensity and movement come from the
+    system's current JTWC warning text (the ABPW digest values lag the
+    warnings and are only the fallback for systems with no warning);
+    the threat cell is the warning-track closest-approach analysis."""
+    sid = system.get('id') or ''
+    fallback_token = CATEGORY_TOKENS.get(
+        system.get('category'), system.get('category') or '')
     name = system.get('name')
-    head = f"{name}（{system.get('id')}・{token}）" if name else f"{system.get('id')}（{token}）"
-    move = MOVEMENT_TOKENS.get(system.get('movement_text'), system.get('movement_text'))
-    motion = []
-    if move and system.get('movement_kt') is not None:
-        motion.append(f"{move} {system['movement_kt']}kt")
-    elif move:
-        motion.append(str(move))
+    warn = _parse_warning(_warning_text(raw, sid), anchor)
+    if warn:
+        token = _category_token(warn['max_kt'], fallback_token)
+        head = f"{name}（{sid}・{token}）" if name else f"{sid}（{token}）"
+        pos = [_latlon(warn['lat'], warn['lon'])]
+        if warn['max_kt'] is not None:
+            pos.append(f"最大{warn['max_kt']}kt")
+        if warn['gust_kt'] is not None:
+            pos.append(f"突風{warn['gust_kt']}kt")
+        if warn['move_deg'] is not None and warn['move_kt'] is not None:
+            move = f"{_COMPASS16[int(round(warn['move_deg'] / 22.5)) % 16]} {warn['move_kt']}kt"
+        else:
+            move = '―'
+        return (f"| {head} | {'・'.join(pos)} | {move} | "
+                f"{_warning_threat(warn['track'])} |")
+    head = f"{name}（{sid}・{fallback_token}）" if name else f"{sid}（{fallback_token}）"
+    pos = [_latlon(system.get('latitude'), system.get('longitude'))]
     if system.get('max_winds_kt') is not None:
-        motion.append(f"最大{system['max_winds_kt']}kt")
+        pos.append(f"最大{system['max_winds_kt']}kt")
     if system.get('gusts_kt') is not None:
-        motion.append(f"突風{system['gusts_kt']}kt")
-    return (f"| {head} | {_latlon(system.get('latitude'), system.get('longitude'))} | "
-            f"{'・'.join(motion) if motion else '―'} | {_threat_floor(cw, system)} |")
+        pos.append(f"突風{system['gusts_kt']}kt")
+    move = MOVEMENT_TOKENS.get(system.get('movement_text'),
+                               system.get('movement_text'))
+    motion = (f"{move} {system['movement_kt']}kt"
+              if move and system.get('movement_kt') is not None
+              else (str(move) if move else '―'))
+    return f"| {head} | {'・'.join(pos)} | {motion} | ―（警報未発出） |"
 
 
-def _monsoon_cell(cw, digest):
+def _monsoon_analysis(cw, digest):
     mentions = (cw or {}).get('monsoon_mentions') or []
-    head = '特記なし' if not mentions else f'ABPWに言及あり（{len(mentions)}行）'
+    parts = ['モンスーンの特記なし' if not mentions
+             else f"モンスーンの言及あり（ABPW {len(mentions)}行）"]
     ub = (digest or {}).get('ulaanbaatar') or {}
+    tendency = ub.get('tendency_hpa')
+    if tendency is not None:
+        if tendency <= -5:
+            parts.append('シベリア高気圧は弱化傾向（寒気の南下は弱まる）')
+        elif tendency >= 5:
+            parts.append('シベリア高気圧は強まる傾向（寒気の南下に注意）')
+        else:
+            parts.append('シベリア高気圧に大きな変化なし')
+    return '。'.join(parts)
+
+
+def _monsoon_values(cw, digest):
+    ub = (digest or {}).get('ulaanbaatar') or {}
+    parts = []
     if ub.get('max_pressure_hpa') is not None:
-        head += f"｜UB域 格子最大 {fmt(ub['max_pressure_hpa'], 0)}hPa"
+        seg = f"UB域 格子最大 {fmt(ub['max_pressure_hpa'], 0)}hPa"
         if ub.get('tendency_hpa') is not None:
-            head += f"・傾向 {ub['tendency_hpa']:+.1f}"
-    return head
+            seg += f"・72h傾向 {ub['tendency_hpa']:+.1f}hPa"
+        parts.append(seg)
+    if (cw or {}).get('monsoon_mentions'):
+        parts.append(f"ABPW言及 {len(cw['monsoon_mentions'])}行")
+    return '・'.join(parts) if parts else '―'
 
 
-def _etc_cell(digest):
+def _etc_analysis(digest):
+    mins = []
+    for key, label in (('manchuria', '満洲'), ('sea_of_japan', '日本海')):
+        e = (digest or {}).get(key) or {}
+        if e.get('min_pressure_hpa') is not None:
+            mins.append((e['min_pressure_hpa'], label))
+    if not mins:
+        return '―'
+    deepest, label = min(mins)
+    if deepest < 1000:
+        return f"{label}に発達した低気圧の兆候（格子値）"
+    if deepest < 1008:
+        return f"{label}に低圧部の兆候（格子値）"
+    return '発達した低気圧の兆候なし（格子値）'
+
+
+def _etc_values(digest):
     parts = []
     for key, label in (('manchuria', '満洲'), ('sea_of_japan', '日本海')):
         e = (digest or {}).get(key) or {}
@@ -320,27 +507,60 @@ def _etc_cell(digest):
     return '・'.join(parts) if parts else '―'
 
 
-def _space_cell(sw):
+def _space_analysis(sw):
     sw = sw or {}
     if not sw.get('extreme'):
         return '特記なし'
     ids = sw.get('warning_or_alert_ids') or []
-    return (f"G{sw.get('max_g_scale_in_outlook')}級・Kp {fmt(sw.get('max_kp_in_outlook'))}"
-            f"（警報・注意報 {'・'.join(ids) if ids else 'なし'}）")
+    head = (f"地磁気嵐の見込み（G{sw.get('max_g_scale_in_outlook')}級）。"
+            f"4都市の日常生活への直接の影響は限定的")
+    if ids:
+        head += f"（警報・注意報 {'・'.join(ids)}）"
+    return head
 
 
-def _ecmwf_cell(cw):
+def _space_values(sw):
+    sw = sw or {}
+    parts = []
+    if sw.get('max_kp_in_outlook') is not None:
+        parts.append(f"Kp最大 {fmt(sw['max_kp_in_outlook'])}")
+    nict = sw.get('nict') or {}
+    if nict.get('kakioka_k_max_24h') is not None:
+        parts.append(f"柿岡K最大 {fmt(nict['kakioka_k_max_24h'], 0)}")
+    return '・'.join(parts) if parts else '―'
+
+
+def _track_check_flags(cw):
+    checks = (cw or {}).get('track_checks') or {}
+    gfs = any(k.startswith('gfs/') and (v or {}).get('ok')
+              for k, v in checks.items())
+    ecm = any(k.startswith('ecmwf_opendata/') and (v or {}).get('ok')
+              for k, v in checks.items())
+    return bool(checks), gfs, ecm
+
+
+def _ecmwf_analysis(cw):
     prod = (cw or {}).get('ecmwf_cyclone_product') or {}
     if prod.get('ok'):
-        head = f"サイクロンプロダクト 取得可（基準時刻 {prod.get('base_time_used')}）"
+        return 'ECMWFサイクロンプロダクトで進路を確認済み'
+    has, gfs, ecm = _track_check_flags(cw)
+    if has and gfs and ecm:
+        return ('ECMWF製品は取得不可。進路はGFS・ECMWF開放データの'
+                'サンプルで代替確認')
+    if has and (gfs or ecm):
+        return 'ECMWF製品は取得不可。進路サンプルで部分的に代替確認'
+    return 'ECMWF製品・代替サンプルとも取得不可'
+
+
+def _ecmwf_values(cw):
+    prod = (cw or {}).get('ecmwf_cyclone_product') or {}
+    if prod.get('ok'):
+        head = f"プロダクト基準時刻 {prod.get('base_time_used')}"
     else:
-        head = (f"サイクロンプロダクト 取得不可（HTTP {prod.get('http_status')}"
-                f"・{len(prod.get('attempts') or [])}基準時刻）")
-    checks = (cw or {}).get('track_checks') or {}
-    if checks:
-        gfs = any(k.startswith('gfs/') and (v or {}).get('ok') for k, v in checks.items())
-        ecm = any(k.startswith('ecmwf_opendata/') and (v or {}).get('ok')
-                  for k, v in checks.items())
+        head = (f"プロダクト HTTP {prod.get('http_status')}"
+                f"・{len(prod.get('attempts') or [])}基準時刻遡及")
+    has, gfs, ecm = _track_check_flags(cw)
+    if has:
         head += (f"｜進路サンプル GFS {'有' if gfs else 'なし'}"
                  f"・ECMWF開放データ {'有' if ecm else 'なし'}")
     return head
@@ -349,23 +569,29 @@ def _ecmwf_cell(cw):
 def render_outlook(raw, calculated):
     """Return (table3_markdown, table4_markdown) for Message 3.
 
-    Table 3: one row per active tropical cyclone, or the single settled
-    line when there are none. Table 4: the fixed-row special outlook;
-    the 判定 row is the 06:00 run's to append, never rendered here.
+    Analysis first (user correction, 2026-11-08): Table 3 reads each
+    system's current JTWC warning text for position / intensity /
+    movement and analyzes the warning forecast track for the threat;
+    Table 4 separates each topic's 分析 (the conclusion) from its
+    数値・根拠 (the structured raw values behind it). The 判定 row is
+    the 06:00 run's to append, never rendered here.
     """
+    raw = raw or {}
     calculated = calculated or {}
+    anchor = _parse_iso(raw.get('collection_utc')) or datetime.now(timezone.utc)
     cw = calculated.get('cyclone_watch') or {}
     systems = cw.get('systems') or []
     if systems:
-        t3 = ['| 名称 | 位置 | 移動・強度 | 脅威 |', '|---|---|---|---|']
-        t3 += [_system_row(cw, s) for s in systems]
+        t3 = ['| 名称 | 現在位置・強度 | 移動 | 脅威・最接近 |', '|---|---|---|---|']
+        t3 += [_system_row(raw, anchor, s) for s in systems]
         table3 = '\n'.join(t3) + '\n'
     else:
         table3 = '熱帯低気圧：なし\n'
     digest = calculated.get('regional_digest') or {}
-    t4 = ['| 項目 | 状況 | 対象・根拠 |', '|---|---|---|',
-          f"| 季節風 | {_monsoon_cell(cw, digest)} | JTWC ABPW・EC46地域格子 |",
-          f"| 温帯低気圧 | {_etc_cell(digest)} | EC46地域格子（格子値） |",
-          f"| 宇宙天気 | {_space_cell(calculated.get('space_weather'))} | SWPC・NICT |",
-          f"| ECMWF検証 | {_ecmwf_cell(cw)} | ECMWF OpenCharts・NOAA GFS・ECMWF Open Data |"]
+    sw = calculated.get('space_weather')
+    t4 = ['| 項目 | 分析 | 数値・根拠 |', '|---|---|---|',
+          f"| 季節風 | {_monsoon_analysis(cw, digest)} | {_monsoon_values(cw, digest)} |",
+          f"| 温帯低気圧 | {_etc_analysis(digest)} | {_etc_values(digest)} |",
+          f"| 宇宙天気 | {_space_analysis(sw)} | {_space_values(sw)} |",
+          f"| ECMWF検証 | {_ecmwf_analysis(cw)} | {_ecmwf_values(cw)} |"]
     return table3, '\n'.join(t4) + '\n'

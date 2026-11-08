@@ -1,4 +1,8 @@
-"""Message-3 outlook tables: the structured special-weather outlook."""
+"""Message-3 outlook tables: the structured special-weather outlook.
+
+Analysis first (user correction, 2026-11-08): Table 3 reads the current
+JTWC warning text, Table 4 separates 分析 from 数値・根拠.
+"""
 import sys
 import unittest
 from pathlib import Path
@@ -6,6 +10,45 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from render_tables import render_outlook
 from compute import regional_digest
+
+WARNING = """WTPN31 PGTW 072100
+MSGID/GENADMIN/JOINT TYPHOON WRNCEN PEARL HARBOR HI//
+SUBJ/TROPICAL STORM 31W (CEMPAKA) WARNING NR 007//
+RMKS/
+1. TROPICAL STORM 31W (CEMPAKA) WARNING NR 007
+   WARNING POSITION:
+   071800Z --- NEAR 21.2N 139.9E
+     MOVEMENT PAST SIX HOURS - 295 DEGREES AT 17 KTS
+   PRESENT WIND DISTRIBUTION:
+   MAX SUSTAINED WINDS - 060 KT, GUSTS 075 KT
+   FORECASTS:
+   12 HRS, VALID AT:
+   080600Z --- 22.1N 137.3E
+   MAX SUSTAINED WINDS - 070 KT, GUSTS 085 KT
+   72 HRS, VALID AT:
+   101800Z --- 26.1N 142.1E
+   MAX SUSTAINED WINDS - 070 KT, GUSTS 085 KT
+"""
+
+FAR_WARNING = """WTPN31 PGTW 072100
+SUBJ/TROPICAL STORM 31W (CEMPAKA) WARNING NR 007//
+   WARNING POSITION:
+   071800Z --- NEAR 10.0N 160.0E
+     MOVEMENT PAST SIX HOURS - 270 DEGREES AT 10 KTS
+   PRESENT WIND DISTRIBUTION:
+   MAX SUSTAINED WINDS - 040 KT, GUSTS 050 KT
+   FORECASTS:
+   12 HRS, VALID AT:
+   080600Z --- 10.5N 158.0E
+   MAX SUSTAINED WINDS - 045 KT, GUSTS 055 KT
+"""
+
+
+def raw(warning=WARNING):
+    if warning is None:
+        return {}
+    return {'collection_utc': '2026-11-08T01:17:15+00:00',
+            'sources': {'jtwc/warning_31w': {'ok': True, 'response': warning}}}
 
 
 def calculated(**kw):
@@ -19,12 +62,11 @@ def calculated(**kw):
                                           'attempts': [{}] * 6,
                                           'base_time_used': None},
                 'track_checks': {
-                    'gfs/cyclone_check_31w': {'ok': True, 'samples': [
-                        {'latitude': 24.0, 'longitude': 141.0}]},
-                    'ecmwf_opendata/cyclone_check_31w': {'ok': True, 'samples': [
-                        {'latitude': 24.0, 'longitude': 141.0}]}}},
+                    'gfs/cyclone_check_31w': {'ok': True, 'samples': []},
+                    'ecmwf_opendata/cyclone_check_31w': {'ok': True, 'samples': []}}},
             'space_weather': {'extreme': True, 'max_g_scale_in_outlook': 2,
-                              'max_kp_in_outlook': 5.0, 'warning_or_alert_ids': []},
+                              'max_kp_in_outlook': 5.0, 'warning_or_alert_ids': [],
+                              'nict': {'kakioka_k_max_24h': 3}},
             'regional_digest': {
                 'ulaanbaatar': {'max_pressure_hpa': 1046.4, 'tendency_hpa': 2.3},
                 'manchuria': {'min_pressure_hpa': 998.2, 'latitude': 44.1,
@@ -36,53 +78,63 @@ def calculated(**kw):
 
 
 class RenderOutlookTests(unittest.TestCase):
-    def test_table3_system_row_and_threat_floor(self):
-        t3, _t4 = render_outlook({}, calculated())
+    def test_table3_reads_the_current_warning(self):
+        t3, _t4 = render_outlook(raw(), calculated())
         lines = t3.strip().split('\n')
-        self.assertEqual(lines[0], '| 名称 | 位置 | 移動・強度 | 脅威 |')
+        self.assertEqual(lines[0], '| 名称 | 現在位置・強度 | 移動 | 脅威・最接近 |')
         row = lines[2]
         self.assertIn('CEMPAKA（31W・TS）', row)
-        self.assertIn('19.0N 144.2E', row)
-        self.assertIn('WNW 16kt・最大35kt・突風45kt', row)
-        self.assertTrue(row.split('|')[4].strip().startswith('火山列島 約'))
-        self.assertTrue(row.split('|')[4].strip().endswith('km（サンプル）'))
+        # Warning values, NOT the lagging ABPW digest (19.0N 144.2E / 35 kt).
+        self.assertIn('21.2N 139.9E・最大60kt・突風75kt', row)
+        self.assertNotIn('144.2E', row)
+        self.assertIn('| WNW 17kt |', row)
+        threat = row.split('|')[4].strip()
+        self.assertIn('火山列島 約', threat)
+        self.assertIn('JST', threat)
+        self.assertIn('kt級', threat)
+
+    def test_table3_warning_track_far_from_all_areas(self):
+        t3, _t4 = render_outlook(raw(FAR_WARNING), calculated())
+        self.assertIn('対象地域への接近なし（最接近 ', t3)
+
+    def test_table3_no_warning_falls_back_to_advisory(self):
+        t3, _t4 = render_outlook(raw(None), calculated())
+        row = t3.strip().split('\n')[2]
+        self.assertIn('19.0N 144.2E・最大35kt・突風45kt', row)
+        self.assertIn('| WNW 16kt |', row)
+        self.assertIn('―（警報未発出）', row)
 
     def test_table3_no_systems_is_one_line(self):
         calc = calculated()
         calc['cyclone_watch'] = {**calc['cyclone_watch'], 'systems': []}
-        t3, _t4 = render_outlook({}, calc)
+        t3, _t4 = render_outlook(raw(), calc)
         self.assertEqual(t3, '熱帯低気圧：なし\n')
 
-    def test_threat_floor_far_and_missing(self):
-        calc = calculated()
-        calc['cyclone_watch']['track_checks'] = {
-            'gfs/cyclone_check_31w': {'ok': True, 'samples': [
-                {'latitude': 10.0, 'longitude': 160.0}]}}
-        t3, _t4 = render_outlook({}, calc)
-        self.assertIn('対象地域から1,000km超（サンプル）', t3)
-        calc['cyclone_watch']['track_checks'] = {}
-        t3, _t4 = render_outlook({}, calc)
-        self.assertIn('| ― |', t3)
-
-    def test_table4_fixed_rows(self):
-        _t3, t4 = render_outlook({}, calculated())
+    def test_table4_analysis_and_values_separated(self):
+        _t3, t4 = render_outlook(raw(), calculated())
         lines = t4.strip().split('\n')
-        self.assertEqual(lines[0], '| 項目 | 状況 | 対象・根拠 |')
-        self.assertIn('| 季節風 | 特記なし｜UB域 格子最大 1046hPa・傾向 +2.3 | JTWC ABPW・EC46地域格子 |', lines)
+        self.assertEqual(lines[0], '| 項目 | 分析 | 数値・根拠 |')
+        self.assertIn('| 季節風 | モンスーンの特記なし。シベリア高気圧に大きな変化なし '
+                      '| UB域 格子最大 1046hPa・72h傾向 +2.3hPa |', lines)
+        self.assertIn('| 温帯低気圧 | 満洲に発達した低気圧の兆候（格子値） |', t4)
         self.assertIn('満洲 格子最小 998hPa（44.1N 126.9E・11/10 00:00UTC）', t4)
         self.assertIn('日本海 格子最小 1005hPa（38.2N 133.5E・11/09 06:00UTC）', t4)
-        self.assertIn('| 宇宙天気 | G2級・Kp 5（警報・注意報 なし） | SWPC・NICT |', lines)
-        self.assertIn('サイクロンプロダクト 取得不可（HTTP 404・6基準時刻）', t4)
-        self.assertIn('進路サンプル GFS 有・ECMWF開放データ 有', t4)
+        self.assertIn('| 宇宙天気 | 地磁気嵐の見込み（G2級）。4都市の日常生活への直接の影響は限定的 '
+                      '| Kp最大 5・柿岡K最大 3 |', lines)
+        self.assertIn('| ECMWF検証 | ECMWF製品は取得不可。進路はGFS・ECMWF開放データのサンプルで代替確認 '
+                      '| プロダクト HTTP 404・6基準時刻遡及｜進路サンプル GFS 有・ECMWF開放データ 有 |', lines)
         self.assertFalse(any('判定' in ln for ln in lines))
 
-    def test_table4_quiet_space_weather_and_monsoon_mention(self):
+    def test_table4_weakening_high_quiet_space_and_monsoon_mention(self):
         calc = calculated()
-        calc['space_weather'] = {'extreme': False}
+        calc['regional_digest']['ulaanbaatar']['tendency_hpa'] = -25.3
+        calc['space_weather'] = {'extreme': False, 'max_kp_in_outlook': 2.0}
         calc['cyclone_watch']['monsoon_mentions'] = ['MONSOON TROUGH ...', '... MONSOON ...']
-        _t3, t4 = render_outlook({}, calc)
-        self.assertIn('| 宇宙天気 | 特記なし | SWPC・NICT |', t4)
-        self.assertIn('ABPWに言及あり（2行）', t4)
+        _t3, t4 = render_outlook(raw(), calc)
+        self.assertIn('シベリア高気圧は弱化傾向（寒気の南下は弱まる）', t4)
+        self.assertIn('モンスーンの言及あり（ABPW 2行）', t4)
+        self.assertIn('ABPW言及 2行', t4)
+        self.assertIn('| 宇宙天気 | 特記なし | Kp最大 2 |', t4)
 
 
 class RegionalDigestTests(unittest.TestCase):
