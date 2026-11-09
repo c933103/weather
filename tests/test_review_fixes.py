@@ -299,9 +299,19 @@ class RenderCellTests(unittest.TestCase):
         cell = rt._heat_cold(c, {'wbgt_band': 'ほぼ安全'}, True)
         self.assertIn('10~17.5 ほぼ安全', cell)
         self.assertIn('風冷 5.6', cell)
-        # Non-Japan keeps the settled priority (WBGT only from 21).
+        # All cities show both when both are valid (user fix, 2026-11-10;
+        # the old non-Japan >= 21 gate is gone).
         cell2 = rt._heat_cold(c, {'wbgt_band': 'ほぼ安全'}, False)
-        self.assertEqual(cell2, '風冷 5.6')
+        self.assertIn('10~17.5 ほぼ安全', cell2)
+        self.assertIn('風冷 5.6', cell2)
+
+    def test_heat_cold_non_japan_below_21_still_shows_wbgt(self):
+        # 2026-11-10 Hong Kong case: WBGT max 19.5 (< 21), wind chill
+        # not applicable — the cell must carry the WBGT range, not '―'.
+        c = {'wbgt': {'maximum': 19.5, 'minimum': 9.5},
+             'wind_chill': {'status': 'not_applicable', 'minimum': None}}
+        self.assertEqual(rt._heat_cold(c, {'wbgt_band': 'ほぼ安全'}, False),
+                         '9.5~19.5 ほぼ安全')
 
     def test_wbgt_cell_shows_the_range(self):
         c = {'wbgt': {'maximum': 26.0, 'minimum': 18.0},

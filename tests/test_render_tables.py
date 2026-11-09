@@ -44,7 +44,7 @@ class RenderTablesTests(unittest.TestCase):
         self.assertEqual(lines[0], '| | 香港 | 台北 | 東京港区 | 高松 |')
         self.assertIn('| 天気 | 曇 | 曇 | 曇 | 曇 |', lines)
         self.assertIn('| 気温 | 10~16 | 10~16 | 10~16 | 10~16 |', lines)
-        self.assertIn('| 暑寒 | ― | ― | 15.2 ほぼ安全 | 15.2 ほぼ安全 |', lines)
+        self.assertIn('| 暑寒 | 15.2 ほぼ安全 | 15.2 ほぼ安全 | 15.2 ほぼ安全 | 15.2 ほぼ安全 |', lines)
         self.assertIn('| 湿度 | 62% (49~74) | 62% (49~74) | 62% (49~74) | 62% (49~74) |', lines)
         self.assertIn('| 降水 | 63% 0.5mm | 63% 0.5mm | 63% 0.5mm | 63% 0.5mm |', lines)
         self.assertIn('| 風 | 最大4.3m/s 北 卓越― | 最大4.3m/s 北 卓越― | 最大4.3m/s 北 卓越― | 最大4.3m/s 北 卓越― |', lines)

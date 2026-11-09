@@ -59,18 +59,22 @@ def _heat_cold(c, digest, japan):
     chill = c.get('wind_chill') or {}
     chill_ok = chill.get('status') == 'applicable' and chill.get('minimum') is not None
     wbgt_min = wbgt.get('minimum')
+    wbgt_ok = wbgt_max is not None and band
     wbgt_text = (f'{fmt(wbgt_min)}~{fmt(wbgt_max)} {band}' if wbgt_min is not None
                  else f'{fmt(wbgt_max)} {band}')
-    if japan and chill_ok and wbgt_max is not None and band:
+    if wbgt_ok and chill_ok:
         # Both valid: report BOTH (review fix, 2026-11-08) — selecting
         # one hides the other.
         return f"{wbgt_text}・風冷 {fmt(chill['minimum'])}"
-    if wbgt_max is not None and wbgt_max >= 21 and band:
+    if wbgt_ok:
+        # All four cities always carry the WBGT range (user fix,
+        # 2026-11-10): Hong Kong/Taipei previously showed WBGT only at
+        # max >= 21 and otherwise fell through to a blank-looking '―'
+        # even though the range was computed (e.g. HK 9.5~19.5 on
+        # 2026-11-10). '―' now means only: neither quantity exists.
         return wbgt_text
     if chill_ok:
         return f"風冷 {fmt(chill['minimum'])}"
-    if japan and wbgt_max is not None and band:
-        return wbgt_text
     return '―'
 
 
