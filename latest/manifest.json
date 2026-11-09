@@ -1,13 +1,13 @@
 {
   "schema": "east_asia_weather_raw_v3",
   "target_date_jst": "2026-11-11",
-  "collection_utc": "2026-11-09T23:37:16.091264+00:00",
+  "collection_utc": "2026-11-09T23:39:38.761843+00:00",
   "window_start_utc": "2026-11-10T21:00:00+00:00",
   "window_end_utc": "2026-11-11T21:00:00+00:00",
   "long_end_utc": "2026-11-26T21:00:00+00:00",
   "chart_end_utc": "2026-12-08T21:00:00+00:00",
-  "collector_commit": "81f6cba215bb8fd6d44ddd647e4c6338fbc56d53",
-  "workflow_run_id": "42721689550",
+  "collector_commit": "cced5aa264feb101c166dd8071f99c847dd262ab",
+  "workflow_run_id": "42721962168",
   "quality": {
     "ready": false,
     "core_24h_ready": true,
@@ -41,94 +41,50 @@
     "hong_kong": {
       "path": "latest/hong_kong.json",
       "bytes": 679677,
-      "sha256": "c4d5bc98a371650e851fe94ad06992ea07b1e72335bf5266497216d0d850d255"
+      "sha256": "f7819d634c004b026a8a7710675b991c2e0b55dec327e09431e3ed19026cf1a5"
     },
     "taipei": {
       "path": "latest/taipei.json",
       "bytes": 83894,
-      "sha256": "4de30da7fdd4b63be0e46af8c46316b38a610486f520e0bfe8af8f9cf109a8ed"
+      "sha256": "4a1e00861ac696690c1a881281fdc2920bb19072bffe8bbedc0ee3e603cf05cd"
     },
     "tokyo_minato": {
       "path": "latest/tokyo_minato.json",
-      "bytes": 667353,
-      "sha256": "3db9a723ee209621091501cc0710ac86f47675481268488c04cf5c48aab6aae2"
+      "bytes": 667385,
+      "sha256": "7e768b2549644e1e6920183ea5e967872a78dc0134f2fd1ba146033055c7a6a6"
     },
     "takamatsu": {
       "path": "latest/takamatsu.json",
-      "bytes": 75131,
-      "sha256": "8cbc4f12e5e2fc3d41509771bac2718e684a4124af05071170f271421a2d20af"
+      "bytes": 75161,
+      "sha256": "3a7827d34c89fabde94524ce0281bd69d718bf0f20d38cd89dd1baa737d216ab"
     },
     "official": {
       "path": "latest/official.json",
       "bytes": 275112,
-      "sha256": "c5193a265c0a6184740f46984ef0526f6354f915b025d22aea28a8931fff0a43"
+      "sha256": "3a4b3cf561777ebc3d5a0307f95f84ea7bb38e7f17c8f66806f8968645d96e81"
     },
     "regional": {
       "path": "latest/regional.json",
-      "bytes": 327082,
-      "sha256": "8c79205117f0397007352359ef2983c5ff6c7575b6f084e4841d537a7233c1b8"
+      "bytes": 327059,
+      "sha256": "eb530731d2dd6304b62ff4e414741a1fd3446df330fd12ed01c7da2fc0513c97"
     },
     "calculated": {
       "path": "latest/calculated.json",
       "bytes": 61597,
-      "sha256": "a177648817fadbbe443a9595d8c55557fb201bf4b9f6ce68b886cc83b44cc86a"
+      "sha256": "dc4ab9b5b5ece681e63e87def8ce3459128218c377b8d2be12aa687d28f05469"
     }
   },
   "raw_artifact": {
-    "name": "weather-raw-42721689550",
+    "name": "weather-raw-42721962168",
     "filename": "2026-11-11_raw.json",
-    "bytes": 6342426,
-    "sha256": "eedd885545b75f0bf7f105188eb583648bcae6b6d03a66d523919dfc2267ca03"
+    "bytes": 6342714,
+    "sha256": "aa353d34f87d0cdc60ec60f3ea1340e4936c5bd43736766975b25d04b3a9ea1d"
   },
   "source_status": {
-    "hong_kong/ec46": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.105963+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "hong_kong/ifs_monsoon": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.093391+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
     "hong_kong/ifs_long": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.098595+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "hong_kong/gfs": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.094462+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "hong_kong/air": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.093857+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:38.765447+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -139,7 +95,7 @@
     "hong_kong/ifs": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.092781+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:38.763304+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -150,7 +106,7 @@
     "taipei/ifs": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.767255+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.059015+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -158,10 +114,10 @@
       },
       "error": null
     },
-    "hong_kong/ec46_members": {
+    "hong_kong/air": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.116913+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:38.764396+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -169,10 +125,21 @@
       },
       "error": null
     },
-    "hong_kong/glofas_unvalidated": {
+    "hong_kong/ec46": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.733555+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:38.784732+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "hong_kong/ifs_monsoon": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:38.763906+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -183,7 +150,7 @@
     "taipei/ifs_monsoon": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.768954+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.210754+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -191,10 +158,10 @@
       },
       "error": null
     },
-    "taipei/air": {
+    "hong_kong/gfs": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.770114+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:38.765007+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -202,43 +169,10 @@
       },
       "error": null
     },
-    "taipei/glofas_unvalidated": {
+    "hong_kong/glofas_unvalidated": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.901954+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "tokyo_minato/ifs": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:17.124850+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "tokyo_minato/air": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:17.304623+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "tokyo_minato/ec46": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:17.455747+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.039990+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -249,7 +183,51 @@
     "taipei/gfs": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:16.772351+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.251616+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "tokyo_minato/ifs": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:39.335296+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "hong_kong/ec46_members": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:38.796696+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "taipei/air": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:39.222272+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "taipei/glofas_unvalidated": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:39.330901+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -260,7 +238,7 @@
     "tokyo_minato/ifs_monsoon": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:17.156614+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.345895+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -268,10 +246,10 @@
       },
       "error": null
     },
-    "tokyo_minato/ifs_long": {
+    "tokyo_minato/air": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:17.317722+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.450036+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -282,7 +260,29 @@
     "tokyo_minato/gfs": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:17.315351+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.465972+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "tokyo_minato/ifs_long": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:39.485411+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "tokyo_minato/ec46": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:39.515301+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -293,29 +293,7 @@
     "tokyo_minato/glofas_unvalidated": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:17.855305+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "takamatsu/ifs_monsoon": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.067641+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "takamatsu/glofas_unvalidated": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.069915+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.709458+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -326,7 +304,7 @@
     "takamatsu/air": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.068489+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.866836+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -334,10 +312,10 @@
       },
       "error": null
     },
-    "takamatsu/ifs": {
+    "takamatsu/glofas_unvalidated": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.009013+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.908301+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -348,7 +326,18 @@
     "tokyo_minato/ec46_members": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:17.817393+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.597276+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "takamatsu/ifs": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:39.755890+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -359,7 +348,18 @@
     "takamatsu/gfs": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.069125+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:39.876765+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "takamatsu/ifs_monsoon": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:39.823789+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -370,7 +370,7 @@
     "hong_kong/marine_reference": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.415367+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.106958+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -381,7 +381,7 @@
     "taipei/marine_reference": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.594554+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.240980+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -392,7 +392,7 @@
     "tokyo_minato/marine_reference": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.620254+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.286454+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -403,7 +403,7 @@
     "takamatsu/marine_reference": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.622046+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.294101+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -414,117 +414,51 @@
     "jma/tokyo_forecast": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.150470+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.615293+00:00",
       "issued_at_utc": "2026-11-09T20:00:00+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 3.62
+        "age_hours": 3.66
       },
       "error": null
     },
     "jma/tokyo_warnings": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.177103+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.669423+00:00",
       "issued_at_utc": "2026-11-09T12:20:00+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 11.29
-      },
-      "error": null
-    },
-    "jma/kagawa_warnings": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.315063+00:00",
-      "issued_at_utc": "2026-11-06T11:39:00+00:00",
-      "freshness": {
-        "status": "stale",
-        "age_hours": 83.97
+        "age_hours": 11.33
       },
       "error": null
     },
     "jma/kagawa_forecast": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.171424+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.663446+00:00",
       "issued_at_utc": "2026-11-09T20:00:00+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 3.62
-      },
-      "error": null
-    },
-    "jma/tokyo_risk": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.317593+00:00",
-      "issued_at_utc": "2026-11-09T20:00:00+00:00",
-      "freshness": {
-        "status": "current",
-        "age_hours": 3.62
-      },
-      "error": null
-    },
-    "hko/local_forecast": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.977141+00:00",
-      "issued_at_utc": "2026-11-09T22:45:00+00:00",
-      "freshness": {
-        "status": "current",
-        "age_hours": 0.87
-      },
-      "error": null
-    },
-    "hko/warnings": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.781366+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "hko/warning_summary": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.877167+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
+        "age_hours": 3.66
       },
       "error": null
     },
     "hko/forecast": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:18.700530+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.295097+00:00",
       "issued_at_utc": "2026-11-09T20:50:00+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 2.79
+        "age_hours": 2.83
       },
       "error": null
     },
-    "jma/kagawa_risk": {
+    "hko/warning_summary": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.399561+00:00",
-      "issued_at_utc": "2026-11-09T20:00:00+00:00",
-      "freshness": {
-        "status": "current",
-        "age_hours": 3.62
-      },
-      "error": null
-    },
-    "jma/river_flood_warnings": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.795541+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.373717+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -532,32 +466,98 @@
       },
       "error": null
     },
-    "jma/tokyo_timeline": {
+    "jma/kagawa_warnings": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.669748+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:40.682700+00:00",
+      "issued_at_utc": "2026-11-06T11:39:00+00:00",
+      "freshness": {
+        "status": "stale",
+        "age_hours": 84.01
+      },
+      "error": null
+    },
+    "hko/warnings": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:40.361900+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "hko/local_forecast": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:40.512822+00:00",
+      "issued_at_utc": "2026-11-09T22:45:00+00:00",
+      "freshness": {
+        "status": "current",
+        "age_hours": 0.91
+      },
+      "error": null
+    },
+    "jma/river_flood_warnings": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:41.257177+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "jma/kagawa_risk": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:41.187087+00:00",
       "issued_at_utc": "2026-11-09T20:00:00+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 3.62
+        "age_hours": 3.66
+      },
+      "error": null
+    },
+    "jma/tokyo_risk": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:41.177163+00:00",
+      "issued_at_utc": "2026-11-09T20:00:00+00:00",
+      "freshness": {
+        "status": "current",
+        "age_hours": 3.66
+      },
+      "error": null
+    },
+    "jma/tokyo_timeline": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:41.255668+00:00",
+      "issued_at_utc": "2026-11-09T20:00:00+00:00",
+      "freshness": {
+        "status": "current",
+        "age_hours": 3.66
       },
       "error": null
     },
     "jma/kagawa_timeline": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.776374+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:41.256410+00:00",
       "issued_at_utc": "2026-11-09T20:00:00+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 3.62
+        "age_hours": 3.66
       },
       "error": null
     },
     "wra/inundation_warning": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.813521+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:41.481105+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -568,29 +568,7 @@
     "jma/dust": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:20.958376+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "wra/inundation_public_index": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.797176+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "hko/flood_information": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.815204+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.342238+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -601,73 +579,73 @@
     "jma/warning_feed": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:20.988197+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.416158+00:00",
       "issued_at_utc": "2026-11-09T23:26:46+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 0.18
+        "age_hours": 0.21
       },
       "error": null
     },
-    "swpc/three_day": {
+    "wra/inundation_public_index": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.168316+00:00",
-      "issued_at_utc": "2026-11-09T12:30:00+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:41.267191+00:00",
+      "issued_at_utc": null,
       "freshness": {
-        "status": "current",
-        "age_hours": 11.12
+        "status": "unverified",
+        "age_hours": null
       },
       "error": null
     },
     "swpc/alerts": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.121848+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.513132+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
         "age_hours": null
+      },
+      "error": null
+    },
+    "swpc/three_day": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:42.748500+00:00",
+      "issued_at_utc": "2026-11-09T12:30:00+00:00",
+      "freshness": {
+        "status": "current",
+        "age_hours": 11.16
       },
       "error": null
     },
     "swpc/geomag": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.229059+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.774230+00:00",
       "issued_at_utc": "2026-11-09T22:05:00+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 1.54
+        "age_hours": 1.58
       },
       "error": null
     },
     "swpc/outlook_27_day": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.230026+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.803374+00:00",
       "issued_at_utc": "2026-11-09T02:58:00+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 20.65
+        "age_hours": 20.69
       },
       "error": null
     },
-    "cwa/warnings": {
+    "jtwc/outlook": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.904614+00:00",
-      "issued_at_utc": "2026-11-09T20:45:00+00:00",
-      "freshness": {
-        "status": "current",
-        "age_hours": 2.87
-      },
-      "error": null
-    },
-    "cwa/tide_index": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:19.938301+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.869457+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -675,54 +653,10 @@
       },
       "error": null
     },
-    "cwa/tamsui_tides": {
+    "hko/flood_information": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:20.303594+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "cwa/tide_page": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:20.074803+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "tokyo_minato/hourly_tide_2026": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.845269+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "takamatsu/hourly_tide_2026": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.983691+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "gtsm/blueearth_status": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.359743+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.001654+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -733,7 +667,51 @@
     "nict/report_latest": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.010345+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.490901+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "tokyo_minato/hourly_tide_2026": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:43.679158+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "gtsm/blueearth_status": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:43.249827+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "cwa/warnings": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:42.003429+00:00",
+      "issued_at_utc": "2026-11-09T20:45:00+00:00",
+      "freshness": {
+        "status": "current",
+        "age_hours": 2.91
+      },
+      "error": null
+    },
+    "takamatsu/hourly_tide_2026": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:43.946420+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -744,18 +722,7 @@
     "tokyo_minato/official_tide": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.936894+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "jtwc/outlook": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.355539+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:43.912618+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -766,7 +733,7 @@
     "takamatsu/official_tide": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:22.013829+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:43.981682+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -774,10 +741,10 @@
       },
       "error": null
     },
-    "hko/tide_extremes_0": {
+    "cwa/tide_index": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:22.303082+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.014285+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -785,10 +752,10 @@
       },
       "error": null
     },
-    "hko/tide_0": {
+    "cwa/tide_page": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:22.055954+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.037715+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -796,21 +763,10 @@
       },
       "error": null
     },
-    "hko/tide_1": {
+    "cwa/tamsui_tides": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:22.306172+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "hko/tide_extremes_1": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:22.513051+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:42.322965+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -821,161 +777,7 @@
     "hong_kong/snow_ensemble": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:22.684294+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "tokyo_minato/snow_ensemble": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:22.877876+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "takamatsu/snow_ensemble": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:22.884745+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "hong_kong/aifs_ensemble": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:23.121081+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "tokyo_minato/temperature_ensemble": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:23.565412+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "tokyo_minato/aifs_ensemble": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:23.571430+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "takamatsu/pollen": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:24.674616+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "tokyo_minato/pollen": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:24.663721+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "pollen/publication_config": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:24.855493+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "regional/luzon_strait": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:25.904830+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "regional/tokaido": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:26.747643+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "cwa/tamsui_hourly_tide": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:21.728299+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "regional/ulaanbaatar": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:27.568368+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "regional/manchuria": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:28.381717+00:00",
-      "issued_at_utc": null,
-      "freshness": {
-        "status": "unverified",
-        "age_hours": null
-      },
-      "error": null
-    },
-    "regional/sea_of_japan": {
-      "ok": true,
-      "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:28.395342+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:44.385565+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -986,7 +788,7 @@
     "taipei/snow_ensemble": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:49.014297+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:44.478036+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -994,10 +796,54 @@
       },
       "error": null
     },
-    "hong_kong/aifs_single": {
+    "hko/tide_extremes_0": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:49.561698+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:44.178297+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "hko/tide_0": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:44.145502+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "hko/tide_extremes_1": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:44.227328+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "hko/tide_1": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:44.222322+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "takamatsu/snow_ensemble": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:44.881546+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1008,7 +854,7 @@
     "hong_kong/temperature_ensemble": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:49.259498+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:44.966741+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1016,10 +862,10 @@
       },
       "error": null
     },
-    "tokyo_minato/aifs_single": {
+    "hong_kong/aifs_ensemble": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:50.520140+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:45.125613+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1027,10 +873,43 @@
       },
       "error": null
     },
-    "regional/pearl_river_delta": {
+    "tokyo_minato/temperature_ensemble": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:51.018165+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:45.131748+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "tokyo_minato/pollen": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:45.756722+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "tokyo_minato/aifs_ensemble": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:45.136438+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "takamatsu/pollen": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:45.881095+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1041,7 +920,128 @@
     "regional/taiwan": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:51.352069+00:00",
+      "fetched_at_utc": "2026-11-09T23:39:45.941329+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "regional/luzon_strait": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:45.997103+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "pollen/publication_config": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:45.915885+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "regional/manchuria": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:46.899558+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "regional/sea_of_japan": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:47.470481+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "cwa/tamsui_hourly_tide": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:39:43.499084+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "hong_kong/aifs_single": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:40:11.177524+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "tokyo_minato/snow_ensemble": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:40:10.942883+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "tokyo_minato/aifs_single": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:40:11.522736+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "regional/pearl_river_delta": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:40:12.021115+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "regional/tokaido": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:40:12.667061+00:00",
+      "issued_at_utc": null,
+      "freshness": {
+        "status": "unverified",
+        "age_hours": null
+      },
+      "error": null
+    },
+    "regional/ulaanbaatar": {
+      "ok": true,
+      "http_status": 200,
+      "fetched_at_utc": "2026-11-09T23:40:12.688503+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1052,7 +1052,7 @@
     "noaa/coastal": {
       "ok": true,
       "http_status": null,
-      "fetched_at_utc": "2026-11-09T23:37:52.172073+00:00",
+      "fetched_at_utc": "2026-11-09T23:40:13.277152+00:00",
       "issued_at_utc": null,
       "freshness": null,
       "error": null
@@ -1060,18 +1060,18 @@
     "jma/tokyo_warning_xml": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:52.187859+00:00",
+      "fetched_at_utc": "2026-11-09T23:40:13.291561+00:00",
       "issued_at_utc": "2026-11-09T19:58:00+00:00",
       "freshness": {
         "status": "current",
-        "age_hours": 3.65
+        "age_hours": 3.69
       },
       "error": null
     },
     "nict/report_body": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:52.315688+00:00",
+      "fetched_at_utc": "2026-11-09T23:40:13.391501+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1082,7 +1082,7 @@
     "jtwc/warning_31w": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:52.811176+00:00",
+      "fetched_at_utc": "2026-11-09T23:40:14.104454+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1093,7 +1093,7 @@
     "gfs/cyclone_check_31w": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:37:53.429398+00:00",
+      "fetched_at_utc": "2026-11-09T23:40:14.659655+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1104,7 +1104,7 @@
     "ecmwf_opendata/cyclone_check_31w": {
       "ok": true,
       "http_status": 200,
-      "fetched_at_utc": "2026-11-09T23:38:09.498865+00:00",
+      "fetched_at_utc": "2026-11-09T23:40:29.733047+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1115,7 +1115,7 @@
     "ecmwf/cyclone_product": {
       "ok": false,
       "http_status": 404,
-      "fetched_at_utc": "2026-11-09T23:38:14.065781+00:00",
+      "fetched_at_utc": "2026-11-09T23:40:33.845774+00:00",
       "issued_at_utc": null,
       "freshness": {
         "status": "unverified",
@@ -1131,7 +1131,7 @@
     "calculation_ready": true,
     "chart_ready": true,
     "chart_aifs_ready": true,
-    "prepared_at_utc": "2026-11-09T23:38:16.120226+00:00",
+    "prepared_at_utc": "2026-11-09T23:40:35.588797+00:00",
     "execution": "GitHub Actions",
     "chart_coverage": {
       "Tokyo Minato Ward": {
@@ -1216,7 +1216,7 @@
     "validation": {
       "path": "latest/validation.json",
       "bytes": 13421,
-      "sha256": "bd90e839a600164b758a7c66fac9073199549f8a0d741d5ac79574cc07fdbb91"
+      "sha256": "b81d2d00975eb4cf1df5fe9e00647ad7b860dfb8bc7a9d5a5ff17e5b65a343dd"
     },
     "validation_ready": true
   }
