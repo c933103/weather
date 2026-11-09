@@ -1,11 +1,17 @@
 name: Collect and compute East Asia forecast
 
 on:
-  # No GitHub `schedule:` trigger: GitHub's scheduler fired the 2026-11-09
-  # collection 3h25m late and dropped the 2026-11-10 slot entirely (the late
-  # run executed <24h before the next slot). Scheduling now lives in the
-  # Muse cron job `weather-collection-dispatch` (daily 05:00 JST), which
-  # dispatches this workflow with an explicit target_date_jst.
+  # Primary schedule: the Muse cron job `weather-collection-dispatch`
+  # dispatches this workflow daily at 05:00 JST with an explicit
+  # target_date_jst (GitHub's own scheduler fired the 2026-11-09 run
+  # 3h25m late and dropped the 2026-11-10 slot entirely).
+  # Backup: the GitHub schedule below fires 5 minutes after the primary
+  # (05:05 JST nominal; GitHub may start it later than that). The
+  # dispatch_guard job turns it into a no-op whenever another run of
+  # this workflow already started within the last 10 hours, so the
+  # backup collects only when the primary dispatch did not trigger.
+  schedule:
+    - cron: '5 20 * * *' # 05:05 JST backup; guarded, see dispatch_guard
   workflow_dispatch:
     inputs:
       target_date_jst:
@@ -18,13 +24,66 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: east-asia-weather-collection
   cancel-in-progress: false
 
 jobs:
+  dispatch_guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      proceed: ${{ steps.guard.outputs.proceed }}
+    steps:
+      - name: Backup schedule yields when the primary dispatch already started a run
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          if [ "$EVENT" != "schedule" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "Not a schedule run; proceeding."
+            exit 0
+          fi
+          python3 - <<'PY'
+          import json, os, urllib.request
+          from datetime import datetime, timedelta, timezone
+          def decide():
+              token = os.environ['GH_TOKEN']
+              repo = os.environ['GITHUB_REPOSITORY']
+              run_id = int(os.environ['RUN_ID'])
+              req = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/actions/workflows/collect.yml/runs?per_page=15',
+                  headers={'Authorization': f'Bearer {token}',
+                           'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  runs = json.load(resp)['workflow_runs']
+              cutoff = datetime.now(timezone.utc) - timedelta(hours=10)
+              others = [r for r in runs
+                        if r['id'] != run_id
+                        and datetime.strptime(r['created_at'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc) >= cutoff]
+              print(f'Other runs in the last 10h: {[r["id"] for r in others]}')
+              return 'false' if others else 'true'
+          try:
+              proceed = decide()
+          except Exception as exc:
+              # Fail open: a duplicate collection is harmless, a missed one is not.
+              print(f'Guard check failed ({exc!r}); proceeding.')
+              proceed = 'true'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'proceed={proceed}\n')
+          print(f'proceed={proceed}')
+          PY
   collect:
+    needs: dispatch_guard
+    if: needs.dispatch_guard.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
