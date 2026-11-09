@@ -122,11 +122,14 @@ def _wind(c, digest):
     if mean is not None:
         parts.append(f'平均{_ms(mean)}')
     # Prevailing direction states are distinct: a named sector, 変動
-    # (variable — data present but no dominant sector), or ― (missing).
+    # (variable — data present but no dominant sector), 静穏 (calm —
+    # every hour measured and calm), or ― (missing input).
     prev = digest.get('wind_prevailing_compass')
     state = digest.get('wind_prevailing_state')
     if prev:
         parts.append(f'卓越{prev}')
+    elif state == 'calm':
+        parts.append('卓越静穏')
     elif state == 'variable':
         parts.append('卓越変動')
     else:
@@ -485,24 +488,55 @@ def _bearing_deg(la, lo, alat, alon):
 
 
 def _gale_reach(track, radii, alat, alon):
-    """True when any forecast point's 34 kt wind radius reaches the area:
+    """True when the forecast 34 kt wind footprint reaches the area:
     the wind impact outcome, assessed separately from the centre track.
-    The radius tested is the one for the quadrant FACING the area at
-    that point (bearing from the centre), never the maximum over
-    quadrants treated as a circle; an unlabelled radius ('ALL', or the
-    legacy plain-number shape) is isotropic by construction."""
-    if not radii:
+    The radius tested is the one for the quadrant FACING the area
+    (bearing from the centre), never the maximum over quadrants treated
+    as a circle; an unlabelled radius ('ALL', or the legacy plain-number
+    shape) is isotropic by construction. The footprint is tested at
+    every forecast point AND along each segment between consecutive
+    points — at the segment's closest-approach point, with the facing
+    quadrant's radius linearly interpolated between the two points
+    (review improvement, 2026-11-09). The segment test is approximate
+    screening only: an inferred between-points passage is never an
+    officially issued exact arrival time."""
+    if not radii or not track:
         return False
-    for (_t, la, lo, _w), entry in zip(track, radii):
+
+    def _radius_at(la, lo, entry):
         r34 = (entry or {}).get(34)
         if not r34:
-            continue
+            return None
         if isinstance(r34, (int, float)):
-            r_nm = r34
-        else:
-            quad = ('NE', 'SE', 'SW', 'NW')[
-                int(_bearing_deg(la, lo, alat, alon) // 90) % 4]
-            r_nm = r34.get(quad, r34.get('ALL'))
+            return r34
+        quad = ('NE', 'SE', 'SW', 'NW')[
+            int(_bearing_deg(la, lo, alat, alon) // 90) % 4]
+        return r34.get(quad, r34.get('ALL'))
+
+    pts = list(zip(track, radii))
+    for (_t, la, lo, _w), entry in pts:
+        r_nm = _radius_at(la, lo, entry)
+        if r_nm and _haversine_km(la, lo, alat, alon) <= r_nm * 1.852:
+            return True
+    for ((_t0, la0, lo0, _w0), e0), ((_t1, la1, lo1, _w1), e1) in zip(pts, pts[1:]):
+        scale = math.cos(math.radians((la0 + la1) / 2.0))
+        ax, ay = lo0 * scale, la0
+        bx, by = lo1 * scale, la1
+        px, py = alon * scale, alat
+        dx, dy = bx - ax, by - ay
+        denom = dx * dx + dy * dy
+        t = 0.0 if denom == 0 else max(
+            0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / denom))
+        if t in (0.0, 1.0):
+            continue  # endpoints already tested above
+        r0 = _radius_at(la0, lo0, e0)
+        r1 = _radius_at(la1, lo1, e1)
+        if r0 is None and r1 is None:
+            continue
+        r_nm = (r0 + (r1 - r0) * t) if (r0 is not None and r1 is not None) \
+            else (r0 if r0 is not None else r1)
+        la = la0 + (la1 - la0) * t
+        lo = lo0 + (lo1 - lo0) * t
         if r_nm and _haversine_km(la, lo, alat, alon) <= r_nm * 1.852:
             return True
     return False
@@ -631,7 +665,14 @@ def _monsoon_analysis(cw, digest, cities=None):
         parts.append(f"{'・'.join(surged)}に寒気サージの指標あり"
                      '（同一24h窓で低下・昇圧がともに閾値超過）')
     elif any(d.get('ready') for _, d in digests):
-        parts.append('4市に寒気サージの指標なし')
+        unassessed = [label for label, d in digests
+                      if not (d.get('ready')
+                              and d.get('surge_coverage_complete'))]
+        if unassessed:
+            parts.append(f"{'・'.join(unassessed)}は7日窓不完全につきサージ未評価"
+                         '（評価済みの都市に指標なし）')
+        else:
+            parts.append('4市に寒気サージの指標なし')
     return '。'.join(parts)
 
 
@@ -659,6 +700,8 @@ def _monsoon_values(cw, digest, cities=None):
             seg += f"（サージ指標 {_ev.get('start_local')}→{_ev.get('end_local')}）"
         elif m.get('surge_signature'):
             seg += '（サージ指標）'
+        if not m.get('surge_coverage_complete'):
+            seg += '（7日窓不完全）'
         segs.append(seg)
     if segs:
         parts.append('4市指標 ' + '｜'.join(segs))

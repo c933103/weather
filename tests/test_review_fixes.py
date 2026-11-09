@@ -542,14 +542,73 @@ class PrevailingCalmTests(unittest.TestCase):
         self.assertEqual(got['wind_prevailing_compass'], compass16(300.0))
         self.assertEqual(got['wind_prevailing_share_pct'], 100.0)
 
-    def test_all_calm_is_missing_not_a_sector(self):
+    def test_all_calm_is_its_own_calm_state(self):
+        # Review improvement (2026-11-09): a fully measured all-calm
+        # window is 静穏, not missing input.
         city = make_city()
         self._window_speeds(city, [0.2] * 24)
         got = compute_city(city, START, END)['report_digest']
         self.assertEqual(got['wind_calm_hours'], 24)
         self.assertEqual(got['wind_calm_share_pct'], 100.0)
-        self.assertEqual(got['wind_prevailing_state'], 'missing')
+        self.assertEqual(got['wind_prevailing_state'], 'calm')
         self.assertIsNone(got['wind_prevailing_compass'])
+        self.assertIn('卓越静穏', rt._wind({}, got))
+
+
+class GaleReachSegmentTests(unittest.TestCase):
+    """Review improvement (2026-11-09): the 34 kt footprint is also
+    tested along the segment between forecast points, with radii
+    interpolated — a centre passing between two points can still bring
+    its gale footprint over an area neither endpoint reaches."""
+
+    def _track(self):
+        t0 = dt.datetime(2026, 11, 10, 0, 0, tzinfo=dt.timezone.utc)
+        return [(t0, 24.0, 139.0, 60.0),
+                (t0 + dt.timedelta(hours=6), 24.0, 141.0, 60.0)]
+
+    def test_segment_passage_reaches_when_points_do_not(self):
+        # Area 1 degree north of the segment midpoint: ~150 km from
+        # either endpoint (outside 70 nm), ~111 km from the midpoint
+        # (inside the interpolated 70 nm).
+        self.assertTrue(rt._gale_reach(self._track(),
+                                       [{34: 70}, {34: 70}], 25.0, 140.0))
+
+    def test_segment_passage_still_bounded_by_radius(self):
+        self.assertFalse(rt._gale_reach(self._track(),
+                                        [{34: 50}, {34: 50}], 25.0, 140.0))
+
+
+class MonsoonCoverageTests(unittest.TestCase):
+    """Review improvement (2026-11-09): the monsoon digest records
+    its 7-day window coverage; a negative surge verdict on a truncated
+    window is not a verdict at all."""
+
+    def _city(self, hours):
+        start = dt.datetime(2026, 1, 15, 21, 0, tzinfo=dt.timezone.utc)
+        stamps = [start + dt.timedelta(hours=i) for i in range(hours)]
+        hourly = {'time': [t.isoformat() for t in stamps],
+                  'temperature_2m': [10.0] * hours,
+                  'pressure_msl': [1000.0] * hours,
+                  'wind_speed_10m': [3.0] * hours,
+                  'wind_direction_10m': [0.0] * hours,
+                  'wind_gusts_10m': [5.0] * hours}
+        return {'timezone': 'Asia/Tokyo', 'hourly': hourly}, start
+
+    def test_full_window_is_complete(self):
+        city, start = self._city(192)
+        got = monsoon_digest(city, 'Takamatsu', start)
+        self.assertTrue(got['ready'])
+        self.assertTrue(got['surge_coverage_complete'])
+        self.assertEqual(got['coverage']['expected_hours'], 169)
+        self.assertEqual(got['coverage']['temperature_hours'], 169)
+        self.assertFalse(got['surge_signature'])
+
+    def test_truncated_window_is_not_complete(self):
+        city, start = self._city(96)
+        got = monsoon_digest(city, 'Takamatsu', start)
+        self.assertTrue(got['ready'])
+        self.assertFalse(got['surge_coverage_complete'])
+        self.assertLess(got['coverage']['temperature_hours'], 169)
 
 
 if __name__ == '__main__':

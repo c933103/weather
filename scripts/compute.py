@@ -587,7 +587,25 @@ def monsoon_digest(city, name, start):
         def _local(stamp):
             return stamp.astimezone(zone).strftime('%m-%d %H:%M') if stamp else None
 
+        # Coverage of the 7-day window (review improvement, 2026-11-09):
+        # a negative surge verdict is meaningful only when the window
+        # searched is actually complete, so the counts, the window
+        # bounds and the completeness flag are recorded for the report.
+        _expected = int((horizon - start).total_seconds() // 3600) + 1
+        _cov_complete = bool(
+            len(temps) >= 0.98 * _expected
+            and len(press) >= 0.98 * _expected
+            and max(temps) >= horizon - dt.timedelta(hours=1)
+            and max(press) >= horizon - dt.timedelta(hours=1))
         out = {'ready': True,
+               'window_start_local': _local(start),
+               'window_end_local': _local(horizon),
+               'coverage': {'temperature_hours': len(temps),
+                            'pressure_hours': len(press),
+                            'wind_hours': len(series['wind_speed_10m']),
+                            'expected_hours': _expected,
+                            'complete': _cov_complete},
+               'surge_coverage_complete': _cov_complete,
                'max_24h_temp_drop_c': round(drop[0], 1) if drop else None,
                'drop_end_local': _local(drop[1]) if drop else None,
                'max_24h_pressure_rise_hpa': round(rise[0], 1) if rise else None,
@@ -700,7 +718,9 @@ def compute_city(city, start, end):
     # below. Ties break toward the tied sector with the greatest summed
     # wind speed. When the modal sector holds under a quarter of the
     # valid hours the flow is VARIABLE （変動） and no prevailing sector
-    # is claimed; with no non-calm valid hours the state is missing.
+    # is claimed; with no non-calm valid hours the state is missing —
+    # unless every hour was measured and every hour was calm, which is
+    # its own state (calm, 静穏) rather than missing input.
     # Calm hours (speed < 0.5 m/s) never vote: a calm hour's recorded
     # direction is not physically meaningful (review fix, 2026-11-09).
     _sector_count = {}
@@ -731,6 +751,10 @@ def compute_city(city, start, end):
             prevailing_state = 'ok'
         else:
             prevailing_state = 'variable'
+    elif len(wind) == 24 and all(v < CALM_WIND_MS for v in wind.values()):
+        # Fully measured all-calm window (review improvement,
+        # 2026-11-09): 静穏, distinct from missing input.
+        prevailing_state = 'calm'
     # Resultant (vector-mean) direction — a separate statistic, never
     # labelled prevailing.
     _sx = _sy = _sw = 0.0

@@ -131,7 +131,7 @@ class RenderOutlookTests(unittest.TestCase):
                 'drop_end_local': '11-12 06:00', 'max_24h_pressure_rise_hpa': 3.0,
                 'rise_end_local': '11-12 06:00', 'northerly_max_ms': 8.0,
                 'northerly_gust_ms': 12.0, 'northerly_at_local': '11-12 06:00',
-                'surge_signature': False}
+                'surge_signature': False, 'surge_coverage_complete': True}
         surge = {**calm, 'max_24h_temp_drop_c': -6.5,
                  'max_24h_pressure_rise_hpa': 7.2, 'northerly_max_ms': 12.3,
                  'surge_signature': True}
@@ -151,7 +151,7 @@ class RenderOutlookTests(unittest.TestCase):
                 'drop_end_local': '11-12 06:00', 'max_24h_pressure_rise_hpa': 2.0,
                 'rise_end_local': '11-12 06:00', 'northerly_max_ms': 5.0,
                 'northerly_gust_ms': None, 'northerly_at_local': '11-12 06:00',
-                'surge_signature': False}
+                'surge_signature': False, 'surge_coverage_complete': True}
         calc['cities'] = {name: {'monsoon': calm} for name in
                           ('Hong Kong', 'Taipei', 'Tokyo Minato Ward', 'Takamatsu')}
         _t3, t4 = render_outlook(raw(), calc)
