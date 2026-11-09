@@ -51,6 +51,16 @@ GFS_FIELDS = (
     'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,'
     'wind_direction_10m,pressure_msl,soil_temperature_0_to_10cm,weather_code'
 ).split(',')
+# The five fields compute.monsoon_digest reads. The digest searches a
+# full 7-day window (169 hourly stamps from the window start); the core
+# IFS series below spans only forecast_days 3 / past_days 2, so it
+# reaches only ~51 h into that window and the digest's coverage gate
+# could never pass in production. A dedicated long series carrying just
+# these fields feeds the digest alone (see build_jobs / collect).
+MONSOON_FIELDS = (
+    'temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,'
+    'wind_gusts_10m'
+).split(',')
 
 
 def iso_now():
@@ -727,6 +737,15 @@ def build_jobs(day):
         jobs[f'{key}/ifs'] = ('https://api.open-meteo.com/v1/forecast', {
             **coord, 'models': 'ecmwf_ifs', 'hourly': ','.join(CORE_FIELDS),
             'forecast_days': 3, 'past_days': 2, 'wind_speed_unit': 'ms', 'precipitation_unit': 'mm'}, True)
+        # Dedicated long IFS series for the per-city monsoon digest ONLY:
+        # it must cover the digest's full 7-day window (window start
+        # + 169 hourly stamps) with margin for scheduling slip, so it
+        # runs forecast_days 10 / past_days 1 with just MONSOON_FIELDS.
+        # No other product reads this series; the 24-hour products, the
+        # charts and every other calculation keep using the core series.
+        jobs[f'{key}/ifs_monsoon'] = ('https://api.open-meteo.com/v1/forecast', {
+            **coord, 'models': 'ecmwf_ifs', 'hourly': ','.join(MONSOON_FIELDS),
+            'forecast_days': 10, 'past_days': 1, 'wind_speed_unit': 'ms'}, True)
         jobs[f'{key}/air'] = ('https://air-quality-api.open-meteo.com/v1/air-quality', {
             **coord, 'domains': 'cams_global', 'hourly': ','.join(AIR_FIELDS), 'forecast_days': 3}, True)
         # NOAA GFS as the independent second model for every city: cross-check
@@ -976,6 +995,12 @@ def collect(day, out):
         city = {'key': key, 'latitude': lat, 'longitude': lon, 'timezone': zone,
                 'hourly': hr, 'raw_air_quality': air, 'gfs': gfs,
                 'checks': {'core_24h': check, 'air_24h': air_check, 'gfs_24h': gfs_check, 'previous_day_pressure': previous_pressure, 'preceding_hour_intervals': interval_check}}
+        # The monsoon digest's dedicated long series, stored separately so
+        # nothing else can pick it up by accident; its check audits the
+        # exact 169-stamp window the digest searches (start .. start+7d).
+        monsoon_hr = forecast_result(root['sources'][f'{key}/ifs_monsoon'], 'ecmwf_ifs_9km', lat, lon)
+        city['monsoon_hourly'] = monsoon_hr
+        city['checks']['monsoon_7d'] = audit_hourly(monsoon_hr, MONSOON_FIELDS, start, hours=169)
         city['coastal_forecast'] = {**{k: v for k, v in coastal.items() if k not in ('cities', 'downloads')}, **coastal.get('cities', {}).get(key, {'ready': False})}
         city['snow_probability_inputs'] = extract_snow(root['sources'][f'{key}/snow_ensemble'], start, audit_hourly)
         if key in ('hong_kong', 'tokyo_minato'):

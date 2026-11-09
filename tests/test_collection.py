@@ -7,8 +7,9 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from collect import (UTC, audit_hourly, audit_long, combined_temperature,
-                     hko_tides, numeric, redact_secrets, report_date, source_freshness)
+from collect import (CITIES, MONSOON_FIELDS, UTC, audit_hourly, audit_long,
+                     build_jobs, combined_temperature, hko_tides, numeric,
+                     redact_secrets, report_date, source_freshness)
 from read_bundle import validate_manifest, verify_bytes
 
 
@@ -83,6 +84,31 @@ class CoverageTests(unittest.TestCase):
     def test_report_reader_rejects_corrupt_data(self):
         with self.assertRaisesRegex(ValueError, 'DATASET_CHECKSUM_MISMATCH'):
             verify_bytes(b'changed', {'bytes': 7, 'sha256': '0'*64})
+
+
+class MonsoonFeedJobTests(unittest.TestCase):
+    """The dedicated long IFS series feeding the monsoon digest: one
+    job per report city, exactly the digest's five fields, long enough
+    to cover the 7-day window (169 stamps) with scheduling margin."""
+
+    def test_every_city_has_a_long_monsoon_job(self):
+        jobs = build_jobs(dt.date(2026, 11, 10))
+        for key in CITIES:
+            self.assertIn(f'{key}/ifs_monsoon', jobs)
+            url, params, numeric_job = jobs[f'{key}/ifs_monsoon']
+            self.assertTrue(numeric_job)
+            self.assertEqual(params['models'], 'ecmwf_ifs')
+            self.assertEqual(params['hourly'].split(','), MONSOON_FIELDS)
+            self.assertGreaterEqual(
+                params['forecast_days'] + params['past_days'], 10)
+            # The core 24-hour series is untouched by the long feed.
+            self.assertEqual(jobs[f'{key}/ifs'][1]['forecast_days'], 3)
+
+    def test_monsoon_fields_are_exactly_what_the_digest_reads(self):
+        self.assertEqual(sorted(MONSOON_FIELDS),
+                         sorted(['temperature_2m', 'pressure_msl',
+                                 'wind_speed_10m', 'wind_direction_10m',
+                                 'wind_gusts_10m']))
 
 
 if __name__ == '__main__':

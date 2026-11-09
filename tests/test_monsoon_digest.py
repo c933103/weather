@@ -90,5 +90,67 @@ class MonsoonDigestTests(unittest.TestCase):
         self.assertFalse(d['ready'])
 
 
+class MonsoonLongFeedTests(unittest.TestCase):
+    """Dedicated long feed (2026-11-09): the digest's 7-day window is
+    fed by city['monsoon_hourly']; the core 'hourly' series reaches
+    only ~51 h into the window, so on the core series alone coverage
+    can never complete, while the long series completes it and can
+    carry a surge the core series never reaches."""
+
+    def _truncated_core(self, hours=51):
+        city = _city(lambda i: 20.0, lambda i: 1010.0,
+                     lambda i: (3.0, 180.0, 5.0))
+        for field in ('temperature_2m', 'pressure_msl', 'wind_speed_10m',
+                      'wind_direction_10m', 'wind_gusts_10m', 'time'):
+            city['hourly'][field] = city['hourly'][field][:hours]
+        return city
+
+    def _tail_surge_long(self):
+        def temp(i):
+            if i < 120:
+                return 20.0
+            if i < 144:
+                return 20.0 - 7.0 * (i - 120) / 24
+            return 13.0
+
+        def press(i):
+            if i < 120:
+                return 1010.0
+            if i < 144:
+                return 1010.0 + 8.0 * (i - 120) / 24
+            return 1018.0
+
+        return _city(temp, press, lambda i: (3.0, 180.0, 5.0))['hourly']
+
+    def test_core_series_alone_cannot_complete_coverage(self):
+        d = monsoon_digest(self._truncated_core(), 'Hong Kong', START)
+        self.assertTrue(d['ready'])
+        self.assertEqual(d['coverage']['temperature_hours'], 51)
+        self.assertFalse(d['surge_coverage_complete'])
+
+    def test_long_series_completes_coverage_and_tail_surge(self):
+        city = self._truncated_core()
+        city['monsoon_hourly'] = self._tail_surge_long()
+        d = monsoon_digest(city, 'Hong Kong', START)
+        self.assertTrue(d['ready'])
+        self.assertIn('monsoon_hourly', d['series_sources'])
+        self.assertEqual(d['coverage']['expected_hours'], 169)
+        self.assertEqual(d['coverage']['temperature_hours'], 169)
+        self.assertEqual(d['coverage']['pressure_hours'], 169)
+        self.assertTrue(d['coverage']['complete'])
+        self.assertTrue(d['surge_coverage_complete'])
+        # The surge sits at hours 120-144, far beyond the core series.
+        self.assertTrue(d['surge_signature'])
+        self.assertIsNotNone(d['surge_event'])
+
+    def test_long_series_alone_is_enough(self):
+        city = {'timezone': 'Asia/Hong_Kong',
+                'monsoon_hourly': self._tail_surge_long()}
+        d = monsoon_digest(city, 'Hong Kong', START)
+        self.assertTrue(d['ready'])
+        self.assertTrue(d['surge_coverage_complete'])
+        self.assertTrue(d['surge_signature'])
+
+
 if __name__ == '__main__':
     unittest.main()

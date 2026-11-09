@@ -531,20 +531,34 @@ def _in_sector(deg, sector):
 
 
 def monsoon_digest(city, name, start):
-    h = city.get('hourly') or {}
     zone = ZoneInfo(city.get('timezone') or 'UTC')
     horizon = start + dt.timedelta(days=7)
+    # Series selection: collection carries a dedicated long IFS series
+    # for this digest alone (city['monsoon_hourly'] — forecast_days 10,
+    # just the five fields below), because the core 24-hour 'hourly'
+    # series reaches only ~51 h into the 7-day window and the coverage
+    # gate could never pass on it. Both series are the same model at the
+    # same grid, so stamps are merged per field — core first, the long
+    # series overlaid — which also keeps bundles collected before the
+    # long series existed working unchanged.
     series = {}
+    series_sources = []
     for field in ('temperature_2m', 'pressure_msl', 'wind_speed_10m',
                   'wind_direction_10m', 'wind_gusts_10m'):
         series[field] = {}
-        for t, v in zip(h.get('time') or [], h.get(field) or []):
-            if v is None:
-                continue
-            stamp = parse_time(t)
-            if start <= stamp <= horizon:
-                series[field][stamp] = v
-    out = {'ready': False}
+    for key in ('hourly', 'monsoon_hourly'):
+        h = city.get(key) or {}
+        if not h.get('time'):
+            continue
+        series_sources.append(key)
+        for field in series:
+            for t, v in zip(h.get('time') or [], h.get(field) or []):
+                if v is None:
+                    continue
+                stamp = parse_time(t)
+                if start <= stamp <= horizon:
+                    series[field][stamp] = v
+    out = {'ready': False, 'series_sources': series_sources}
     temps, press = series['temperature_2m'], series['pressure_msl']
     if len(temps) >= 25 and len(press) >= 25:
         drop = rise = None
@@ -598,6 +612,7 @@ def monsoon_digest(city, name, start):
             and max(temps) >= horizon - dt.timedelta(hours=1)
             and max(press) >= horizon - dt.timedelta(hours=1))
         out = {'ready': True,
+               'series_sources': series_sources,
                'window_start_local': _local(start),
                'window_end_local': _local(horizon),
                'coverage': {'temperature_hours': len(temps),
