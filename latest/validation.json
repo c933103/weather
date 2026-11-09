@@ -1,7 +1,7 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-09T22:57:46.612598+00:00",
-  "target_date_jst": "2026-11-11",
+  "generated_at_utc": "2026-11-09T23:26:37.746271+00:00",
+  "target_date_jst": "2026-11-10",
   "cities": {
     "Hong Kong": {
       "temperature": {
@@ -336,7 +336,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 372161 bytes"
+      "detail": "PNG signature ok, 373524 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -344,7 +344,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 280027 bytes"
+      "detail": "PNG signature ok, 289777 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
