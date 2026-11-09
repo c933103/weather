@@ -1,8 +1,11 @@
 name: Collect and compute East Asia forecast
 
 on:
-  schedule:
-    - cron: '0 20 * * *' # 05:00 JST on the following calendar day
+  # No GitHub `schedule:` trigger: GitHub's scheduler fired the 2026-11-09
+  # collection 3h25m late and dropped the 2026-11-10 slot entirely (the late
+  # run executed <24h before the next slot). Scheduling now lives in the
+  # Muse cron job `weather-collection-dispatch` (daily 05:00 JST), which
+  # dispatches this workflow with an explicit target_date_jst.
   workflow_dispatch:
     inputs:
       target_date_jst:
