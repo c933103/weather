@@ -9,9 +9,11 @@ on:
   # (05:05 JST nominal; GitHub may start it later than that). The
   # dispatch_guard job turns it into a no-op whenever another run of
   # this workflow already started in this data cycle — at or after the
-  # 12:00 UTC (21:00 JST) model release the cycle is built on — so the
-  # backup collects only when the primary dispatch did not trigger,
-  # and a pre-release run on the previous cycle never suppresses it.
+  # 18:00 UTC release of the 12 UTC-based data the cycle is built on
+  # (ECMWF disseminates that run 17:45-19:34 UTC; the 20:00 UTC
+  # primary dispatch sits after it) — so the backup collects only
+  # when the primary dispatch did not trigger, and a run on the
+  # previous (00 UTC) cycle never suppresses it.
   schedule:
     - cron: '5 20 * * *' # 05:05 JST backup; guarded, see dispatch_guard
   workflow_dispatch:
@@ -67,15 +69,18 @@ jobs:
                            'X-GitHub-Api-Version': '2022-11-28'})
               with urllib.request.urlopen(req, timeout=60) as resp:
                   runs = json.load(resp)['workflow_runs']
-              # Cycle boundary: this report cycle is built on the 12:00 UTC
-              # (21:00 JST) model release. Only runs created at or after
-              # that release count as this cycle's collection; a run from
-              # before it used the previous cycle's data and must not
-              # suppress the backup. The anchor (start - 8h) keeps the
-              # boundary on the scheduled day even when GitHub starts
-              # this run hours late.
-              anchor = datetime.now(timezone.utc) - timedelta(hours=8)
-              cutoff = anchor.replace(hour=12, minute=0, second=0, microsecond=0)
+              # Cycle boundary: this report cycle is built on the 12 UTC
+              # model run, whose data ECMWF releases from ~18:00 UTC
+              # (dissemination 17:45-19:34 UTC) — 12:00 UTC is only the
+              # run's base time, when nothing is available yet. Only
+              # runs created at or after the 18:00 UTC release count as
+              # this cycle's collection; a run from before it used the
+              # previous (00 UTC) cycle's data and must not suppress
+              # the backup. The anchor (start - 2h) keeps the boundary
+              # on the scheduled day even when GitHub starts this run
+              # hours late.
+              anchor = datetime.now(timezone.utc) - timedelta(hours=2)
+              cutoff = anchor.replace(hour=18, minute=0, second=0, microsecond=0)
               if cutoff > anchor:
                   cutoff -= timedelta(days=1)
               others = [r for r in runs
