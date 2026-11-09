@@ -1,6 +1,6 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-08T23:27:06.550454+00:00",
+  "generated_at_utc": "2026-11-09T05:01:50.418139+00:00",
   "target_date_jst": "2026-11-10",
   "cities": {
     "Hong Kong": {
@@ -260,7 +260,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: mist"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -336,7 +336,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 371323 bytes"
+      "detail": "PNG signature ok, 372597 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -344,7 +344,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 278063 bytes"
+      "detail": "PNG signature ok, 279272 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
