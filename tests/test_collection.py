@@ -7,9 +7,10 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from collect import (CITIES, MONSOON_FIELDS, UTC, audit_hourly, audit_long,
-                     build_jobs, combined_temperature, hko_tides, numeric,
-                     redact_secrets, report_date, source_freshness)
+from collect import (CITIES, MONSOON_FIELDS, UTC, all_city_hourly_tides_ready,
+                     audit_hourly, audit_long, build_jobs, combined_temperature,
+                     hko_tides, numeric, redact_secrets, report_date,
+                     source_freshness)
 from read_bundle import validate_manifest, verify_bytes
 
 
@@ -103,6 +104,33 @@ class MonsoonFeedJobTests(unittest.TestCase):
                 params['forecast_days'] + params['past_days'], 10)
             # The core 24-hour series is untouched by the long feed.
             self.assertEqual(jobs[f'{key}/ifs'][1]['forecast_days'], 3)
+
+    def test_hourly_tide_gate_taipei_events_can_stand_for_empty_reference(self):
+        # Regression, run 43092342505 (2026-11-12): the CWA ocean platform
+        # answered HTTP 200 with an empty chart_data, so Taipei's retained
+        # hourly reference had 0 rows while its official event table was
+        # ready — the collection must not fail on the reference alone.
+        def city(key, n=24, ref_ready=None, events_ready=False):
+            tide = {'time': ['t'] * n, 'ready': events_ready}
+            if ref_ready is not None:
+                tide['hourly_reference'] = {'ready': ref_ready,
+                                            'time': ['t'] * (24 if ref_ready else 0)}
+            return {'key': key, 'astronomical_tide': tide}
+        full = [city('hong_kong'), city('tokyo_minato'), city('takamatsu'),
+                city('taipei', n=0, ref_ready=True)]
+        self.assertTrue(all_city_hourly_tides_ready(full))
+        taipei_events_only = [city('hong_kong'), city('tokyo_minato'),
+                              city('takamatsu'),
+                              city('taipei', n=0, ref_ready=False, events_ready=True)]
+        self.assertTrue(all_city_hourly_tides_ready(taipei_events_only))
+        taipei_nothing = [city('hong_kong'), city('tokyo_minato'),
+                          city('takamatsu'),
+                          city('taipei', n=0, ref_ready=False, events_ready=False)]
+        self.assertFalse(all_city_hourly_tides_ready(taipei_nothing))
+        other_city_missing = [city('hong_kong'), city('tokyo_minato', n=23),
+                              city('takamatsu'),
+                              city('taipei', n=0, ref_ready=True)]
+        self.assertFalse(all_city_hourly_tides_ready(other_city_missing))
 
     def test_monsoon_fields_are_exactly_what_the_digest_reads(self):
         self.assertEqual(sorted(MONSOON_FIELDS),

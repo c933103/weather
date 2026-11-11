@@ -729,6 +729,35 @@ def cwa_tides(source, start, end):
             'hourly_ready': False, 'note': 'Public CWA product provides exact high/low events; no hourly astronomical series has been validated.'}
 
 
+def all_city_hourly_tides_ready(cities):
+    """Hourly-tide completeness for the collection's hard gate.
+
+    For Hong Kong, Tokyo and Takamatsu the official tide product IS the
+    hourly series, so 24 hourly points (or a ready hourly reference) are
+    required. Taipei is different: CWA's public tide product for Tamsui
+    is the official high/low event table (cwa_tides above), and the
+    ocean platform's hourly series for Danshuei station 1102 is retained
+    as a reference only — no computed product reads it. By the
+    2026-11-12 collection that platform was answering HTTP 200 with an
+    empty chart_data for every station and every date tested, which
+    failed the whole run
+    (43092342505) even though Taipei's event table was ready and every
+    product was produced. A ready Taipei event table therefore
+    satisfies this gate for Taipei; the missing reference series stays
+    recorded in quality (taipei_hourly_reference_ready + a reason).
+    """
+    for city in cities:
+        tide = city.get('astronomical_tide') or {}
+        if len(tide.get('time', [])) == 24:
+            continue
+        if (tide.get('hourly_reference') or {}).get('ready') is True:
+            continue
+        if city.get('key') == 'taipei' and tide.get('ready'):
+            continue
+        return False
+    return True
+
+
 def build_jobs(day):
     from specialists import build_specialist_jobs
     jobs = {}
@@ -1099,6 +1128,7 @@ def collect(day, out):
             city['astronomical_tide']['hourly_reference'] = {
                 'station': 'CWA Danshuei tide station 1102', 'latitude': 25.17569, 'longitude': 121.42483,
                 'units': 'm', 'datum': 'CWA station reference; retain separately from town-level chart/TWVD/MSL event heights',
+                'note': 'Retained reference series only; no computed product reads it. Taipei\'s tide product is the official CWA high/low event table above.',
                 'time': [v[0] for v in hourly], 'height': [v[1] for v in hourly], 'ready': len(hourly) == 24}
             city['local_coastal_forecast'] = {'provider': 'CWA', 'station_id': '1102', 'chart_data': rows,
                 'note': 'astron_tide is astronomical tide; surge is the forecast coastal water level, not itself a residual. Preserve the common station reference.'}
@@ -1109,7 +1139,15 @@ def collect(day, out):
     q['gfs_24h_ready'] = all(gfs_checks)
     q['chart_28d_ready'] = len(chart_checks) == 2 and all(chart_checks)
     q['official_tides_ready'] = all(c['astronomical_tide']['ready'] for c in root['cities'].values())
-    q['all_city_hourly_tides_ready'] = all(len(c['astronomical_tide'].get('time', [])) == 24 or c['astronomical_tide'].get('hourly_reference', {}).get('ready') is True for c in root['cities'].values())
+    q['all_city_hourly_tides_ready'] = all_city_hourly_tides_ready(root['cities'].values())
+    taipei_ref = (root['cities'].get('Taipei', {}).get('astronomical_tide', {})
+                  .get('hourly_reference') or {})
+    q['taipei_hourly_reference_ready'] = taipei_ref.get('ready') is True
+    if not q['taipei_hourly_reference_ready']:
+        q['reasons'].append(
+            'cwa/tamsui_hourly_tide: no hourly rows for Danshuei station 1102 in this '
+            'collection; that series is a retained reference only — Taipei\'s tide '
+            'product is the official CWA high/low event table, which is ready.')
     q['solar_3day_ready'] = root['sources']['swpc/three_day']['ok'] and root['sources']['swpc/three_day']['freshness']['status'] == 'current'
     q['coastal_surge_24h_ready'] = coastal.get('ready', False)
     q['snow_probability_inputs_ready'] = all(c['snow_probability_inputs']['check']['ready'] for c in root['cities'].values())
