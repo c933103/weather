@@ -1,7 +1,7 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-10T20:04:04.546905+00:00",
-  "target_date_jst": "2026-11-11",
+  "generated_at_utc": "2026-11-11T20:02:15.733883+00:00",
+  "target_date_jst": "2026-11-12",
   "cities": {
     "Hong Kong": {
       "temperature": {
@@ -286,8 +286,8 @@
   },
   "hazards": {
     "cyclone_verification": {
-      "status": "ok",
-      "detail": "independent-model samples retrieved and coherent with the warning positions; centres are NOT identified from point samples, so the track is never called confirmed"
+      "status": "caution",
+      "detail": "independent-model samples retrieved but inconclusive against the warning positions"
     },
     "space_weather": {
       "status": "ok",
@@ -329,14 +329,15 @@
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
       "jma/kagawa_warnings: stale official issue timestamp; not current warning evidence",
-      "ecmwf/cyclone_product: request failed (404)"
+      "ecmwf/cyclone_product: request failed (404)",
+      "all_city_hourly_tides_ready: failed"
     ],
     "products_invalid": []
   },
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 383720 bytes"
+      "detail": "PNG signature ok, 384983 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -344,7 +345,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 285048 bytes"
+      "detail": "PNG signature ok, 282573 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
