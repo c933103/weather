@@ -823,10 +823,15 @@ def regional_digest(raw):
 
     Ulaanbaatar: the grid's maximum MSLP and the pooled tendency over the
     first 72 hours of the regional series (the Siberian High segment of
-    the monsoon row). Manchuria / Sea of Japan: the grid's minimum MSLP in
-    the same span, with the grid point and valid time — the
-    extratropical-cyclone row's floor, a grid statistic only, never a
-    cyclone identification.
+    the monsoon row). The extratropical-cyclone grids — Manchuria and the
+    Sea of Japan (continental / winter development), the East China Sea
+    and the Tokaido Pacific (south-coast lows, late winter to spring, and
+    baiu-front lows), and the Okhotsk / Kurils (northern lows): each
+    grid's minimum MSLP in the same span, with the grid point and valid
+    time — the extratropical-cyclone row's floor, a grid statistic only,
+    never a cyclone identification. (Grid set widened 2026-11-12 at the
+    user's direction: the two winter grids alone missed the seasons and
+    corridors in which lows develop south of Japan.)
     """
     reg = raw.get('regional_forecasts') or {}
 
@@ -841,7 +846,8 @@ def regional_digest(raw):
         return sorted(rows)
 
     digest = {}
-    for area in ('ulaanbaatar', 'manchuria', 'sea_of_japan'):
+    for area in ('ulaanbaatar', 'manchuria', 'sea_of_japan',
+                 'east_china_sea', 'tokaido', 'okhotsk'):
         rows = samples(area)
         if not rows:
             continue

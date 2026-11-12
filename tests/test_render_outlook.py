@@ -169,6 +169,19 @@ class RenderOutlookTests(unittest.TestCase):
         self.assertIn('| 宇宙天気 | 特記なし | Kp最大 2 |', t4)
 
 
+    def test_table4_etc_reads_the_widened_grids(self):
+        calc = calculated()
+        calc['regional_digest']['east_china_sea'] = {
+            'min_pressure_hpa': 995.0, 'latitude': 30.5, 'longitude': 127.0,
+            'min_at_utc': '2026-11-10T06:00:00+00:00'}
+        calc['regional_digest']['okhotsk'] = {
+            'min_pressure_hpa': 1001.0, 'latitude': 50.0, 'longitude': 149.0,
+            'min_at_utc': '2026-11-10T06:00:00+00:00'}
+        _t3, t4 = render_outlook(raw(), calc)
+        self.assertIn('| 温帯低気圧 | 東シナ海に発達した低気圧の兆候（格子値） |', t4)
+        self.assertIn('東シナ海 格子最小 995hPa（30.5N 127.0E・11/10 06:00UTC）', t4)
+        self.assertIn('オホーツク 格子最小 1001hPa（50.0N 149.0E・11/10 06:00UTC）', t4)
+
     def test_table4_monsoon_analysis_names_surge_windows(self):
         # Regression (user, 2026-11-12): the 分析 sentence named the surged
         # cities but left WHEN to the 数値・根拠 column only.
@@ -232,6 +245,23 @@ class RegionalDigestTests(unittest.TestCase):
         self.assertEqual(d['manchuria']['min_pressure_hpa'], 1005.0)
         self.assertEqual(d['manchuria']['latitude'], 44.1)
         self.assertEqual(d['sea_of_japan']['min_pressure_hpa'], 1010.0)
+
+    def test_digest_covers_the_widened_etc_grids(self):
+        # Grid set widened 2026-11-12 (user): south-coast / baiu corridors
+        # and the northern lows, not only the two winter grids.
+        def point(lat, lon, base):
+            times = [f'2026-11-0{7 + i // 4}T{(i % 4) * 6:02d}:00' for i in range(12)]
+            return {'latitude': lat, 'longitude': lon,
+                    'hourly': {'time': times,
+                               'pressure_msl': [base + i for i in range(12)]}}
+        raw = {'regional_forecasts': {
+            'east_china_sea': {'grid_forecasts': [point(30.5, 127.0, 1002.0)]},
+            'tokaido': {'grid_forecasts': [point(34.0, 138.0, 1008.0)]},
+            'okhotsk': {'grid_forecasts': [point(50.0, 149.0, 990.0)]}}}
+        d = regional_digest(raw)
+        self.assertEqual(d['east_china_sea']['min_pressure_hpa'], 1002.0)
+        self.assertEqual(d['tokaido']['min_pressure_hpa'], 1008.0)
+        self.assertEqual(d['okhotsk']['min_pressure_hpa'], 990.0)
 
 
 if __name__ == '__main__':

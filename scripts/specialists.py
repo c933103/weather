@@ -11,6 +11,8 @@ REGIONS = {
     'ulaanbaatar': ('Ulaanbaatar / winter monsoon', (46, 50), (104, 110)),
     'manchuria': ('Manchuria', (39, 52), (119, 135)),
     'sea_of_japan': ('Sea of Japan', (34, 44), (129, 140)),
+    'east_china_sea': ('East China Sea', (27, 34), (123, 131)),
+    'okhotsk': ('Sea of Okhotsk / Kurils', (44, 56), (142, 156)),
 }
 REGIONAL_FIELDS = ('temperature_2m', 'temperature_2m_spread', 'pressure_msl',
                    'pressure_msl_spread', 'wind_speed_10m', 'wind_gusts_10m',

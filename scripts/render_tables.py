@@ -724,9 +724,14 @@ def _monsoon_values(cw, digest, cities=None):
     return '・'.join(parts) if parts else '―'
 
 
+ETC_AREAS = (('manchuria', '満洲'), ('sea_of_japan', '日本海'),
+             ('east_china_sea', '東シナ海'), ('tokaido', '本州南岸'),
+             ('okhotsk', 'オホーツク'))
+
+
 def _etc_analysis(digest):
     mins = []
-    for key, label in (('manchuria', '満洲'), ('sea_of_japan', '日本海')):
+    for key, label in ETC_AREAS:
         e = (digest or {}).get(key) or {}
         if e.get('min_pressure_hpa') is not None:
             mins.append((e['min_pressure_hpa'], label))
@@ -742,7 +747,7 @@ def _etc_analysis(digest):
 
 def _etc_values(digest):
     parts = []
-    for key, label in (('manchuria', '満洲'), ('sea_of_japan', '日本海')):
+    for key, label in ETC_AREAS:
         e = (digest or {}).get(key) or {}
         if e.get('min_pressure_hpa') is None:
             continue
