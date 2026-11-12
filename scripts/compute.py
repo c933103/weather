@@ -784,12 +784,14 @@ def compute_city(city, start, end):
     resultant_deg = None
     if _sw > 0 and math.hypot(_sx, _sy) / _sw >= 0.05:
         resultant_deg = round((math.degrees(math.atan2(_sx, _sy)) + 360) % 360, 1)
+    _zone = ZoneInfo(city.get('timezone') or 'UTC')
     result['report_digest'] = {
         'dominant_weather_code': Counter(codes).most_common(1)[0][0] if codes else None,
         'humidity_mean': round(sum(humidity) / len(humidity), 1) if len(humidity) == 24 else None,
         'pressure_mean_hpa': round(sum(current.values()) / len(current), 1) if len(current) == 24 else None,
         'pressure_mean_change_24h': round(sum(v for _, v in changes) / len(changes), 1) if len(changes) == 24 else None,
         'wind_max_time_utc': max_wind_time.isoformat() if max_wind_time else None,
+        'wind_max_time_local': max_wind_time.astimezone(_zone).strftime('%m-%d %H:%M') if max_wind_time else None,
         'wind_direction_at_max_deg': directions.get(max_wind_time) if max_wind_time else None,
         'wind_direction_at_max_compass': compass16(directions.get(max_wind_time)) if max_wind_time else None,
         'wbgt_band': wbgt_band,
@@ -803,6 +805,7 @@ def compute_city(city, start, end):
         'wind_resultant_compass': compass16(resultant_deg) if resultant_deg is not None else None,
         'wind_gust_max_ms': result['wind_gusts_10m'].get('maximum') if result['wind_gusts_10m'].get('ready') else None,
         'wind_gust_max_time_utc': result['wind_gusts_10m'].get('time_of_maximum_utc') if result['wind_gusts_10m'].get('ready') else None,
+        'wind_gust_max_time_local': (parse_time(result['wind_gusts_10m']['time_of_maximum_utc']).astimezone(_zone).strftime('%m-%d %H:%M') if result['wind_gusts_10m'].get('ready') and result['wind_gusts_10m'].get('time_of_maximum_utc') else None),
         'hazard_flags': hazard_flags(
             result['pm2_5'].get('maximum') if result['pm2_5'].get('ready') else None,
             result['pm10'].get('maximum') if result['pm10'].get('ready') else None,

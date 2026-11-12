@@ -196,6 +196,23 @@ class RenderOutlookTests(unittest.TestCase):
         self.assertIn('に寒気サージの指標あり', t4)
 
 
+    def test_table4_hazard_gust_and_cme_carry_timing(self):
+        # Audit (user, 2026-11-12): same defect class as the monsoon surge
+        # windows — a gust finding stated no time although the digest
+        # carries the gust-max time, and a CME mention dropped the SWPC
+        # line that states the expected arrival.
+        calc = calculated()
+        calc['cities'] = {'Hong Kong': {'report_digest': {
+            'wind_gust_max_ms': 28.4,
+            'wind_gust_max_time_local': '11-13 03:00'}}}
+        calc['space_weather'] = {**calc['space_weather'], 'cme_arrivals': [
+            'A CME is expected to arrive on Nov 14 at approximately 06 UT']}
+        _t3, t4 = render_outlook(raw(), calc)
+        self.assertIn('強風（香港 突風28.4m/s・11/13 03:00）', t4)
+        self.assertIn('突風最大 28.4m/s（香港・11/13 03:00）', t4)
+        self.assertIn('CME原文：A CME is expected to arrive on Nov 14', t4)
+
+
 class RegionalDigestTests(unittest.TestCase):
     def _raw(self):
         def point(lat, lon, base):

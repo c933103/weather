@@ -788,6 +788,10 @@ def _space_values(sw):
         parts.append(f"柿岡K最大 {fmt(nict['kakioka_k_max_24h'], 0)}")
     if sw.get('cme_arrivals'):
         parts.append(f"CME到達言及 {len(sw['cme_arrivals'])}件")
+        # The snippet is the SWPC product's own line — it carries the
+        # expected arrival timing the analysis sentence omits (audit,
+        # 2026-11-12: same defect class as the monsoon surge windows).
+        parts.append(f"CME原文：{sw['cme_arrivals'][0]}")
     return '・'.join(parts) if parts else '―'
 
 
@@ -862,7 +866,9 @@ def _regional_hazard(calculated):
             snow_day.append((snow, label))
         g = ((c.get('report_digest') or {}).get('wind_gust_max_ms'))
         if g is not None:
-            gust.append((g, label))
+            gust.append((g, label,
+                         (c.get('report_digest') or {}).get(
+                             'wind_gust_max_time_local')))
     findings = []
     if rain_day and max(rain_day)[0] >= 50:
         findings.append(f"大雨（{max(rain_day)[1]} 日降水{fmt(max(rain_day)[0], 0)}mm）")
@@ -871,7 +877,9 @@ def _regional_hazard(calculated):
     if snow_day and max(snow_day)[0] >= 5:
         findings.append(f"大雪（{max(snow_day)[1]} 降雪{fmt(max(snow_day)[0], 0)}cm）")
     if gust and max(gust)[0] >= 25:
-        findings.append(f"強風（{max(gust)[1]} 突風{fmt(max(gust)[0], 1)}m/s）")
+        _g = max(gust)
+        _when = f"・{_g[2].replace('-', '/', 1)}" if _g[2] else ''
+        findings.append(f"強風（{_g[1]} 突風{fmt(_g[0], 1)}m/s{_when}）")
     analysis = '・'.join(findings) if findings else '都市計算値の範囲では特記なし'
     analysis += '。波浪・交通影響はモデル値なし（警報類で確認）'
     values = []
@@ -882,7 +890,9 @@ def _regional_hazard(calculated):
     if snow_day:
         values.append(f"降雪最大 {fmt(max(snow_day)[0], 0)}cm（{max(snow_day)[1]}）")
     if gust:
-        values.append(f"突風最大 {fmt(max(gust)[0], 1)}m/s（{max(gust)[1]}）")
+        _g = max(gust)
+        _when = f"・{_g[2].replace('-', '/', 1)}" if _g[2] else ''
+        values.append(f"突風最大 {fmt(_g[0], 1)}m/s（{_g[1]}{_when}）")
     surge = []
     for name, label in _SHORT_LABELS.items():
         exc = (((cities.get(name) or {}).get('coastal_assessment') or {})
