@@ -1,7 +1,7 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-11T22:50:59.846721+00:00",
-  "target_date_jst": "2026-11-12",
+  "generated_at_utc": "2026-11-12T10:33:22.591865+00:00",
+  "target_date_jst": "2026-11-13",
   "cities": {
     "Hong Kong": {
       "temperature": {
@@ -50,7 +50,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: none"
+        "detail": "low visibility corroborated by humidity / dew-point spread / low cloud at the same hours"
       },
       "frost": {
         "status": "ok",
@@ -65,8 +65,8 @@
         "detail": "official tide events on their own stated datum (timing and heights; never mixed with STOFS levels)"
       },
       "urban_inundation": {
-        "status": "ok",
-        "detail": "rainfall-rate screen negative; a negative screen — like an empty warning feed — does not establish safety"
+        "status": "caution",
+        "detail": "rainfall-rate screen POSITIVE: assess urban inundation distinctly from river flooding"
       },
       "pollen": {
         "status": "missing",
@@ -324,7 +324,6 @@
     "new_source_failures": [],
     "quality_state": "partial",
     "quality_reasons": [
-      "cwa/tamsui_hourly_tide: no hourly rows for Danshuei station 1102 in this collection; that series is a retained reference only — Taipei's tide product is the official CWA high/low event table, which is ready.",
       "GloFAS grids have not been matched to applicable river reaches and flood thresholds.",
       "Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.",
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
@@ -337,7 +336,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 380200 bytes"
+      "detail": "PNG signature ok, 377286 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -345,7 +344,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 281472 bytes"
+      "detail": "PNG signature ok, 279406 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
