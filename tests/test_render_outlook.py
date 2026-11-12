@@ -169,6 +169,33 @@ class RenderOutlookTests(unittest.TestCase):
         self.assertIn('| 宇宙天気 | 特記なし | Kp最大 2 |', t4)
 
 
+    def test_table4_monsoon_analysis_names_surge_windows(self):
+        # Regression (user, 2026-11-12): the 分析 sentence named the surged
+        # cities but left WHEN to the 数値・根拠 column only.
+        calc = calculated()
+        calc['cities'] = {
+            'Hong Kong': {'monsoon': {
+                'ready': True, 'surge_signature': True,
+                'surge_coverage_complete': True,
+                'surge_event': {'start_local': '11-18 02:00',
+                                'end_local': '11-19 02:00',
+                                'temp_drop_c': -8.0, 'pressure_rise_hpa': 6.7},
+                'max_24h_temp_drop_c': -8.0, 'drop_end_local': '11-19 02:00',
+                'max_24h_pressure_rise_hpa': 7.2, 'northerly_max_ms': 6.9}},
+            'Tokyo Minato Ward': {'monsoon': {
+                'ready': True, 'surge_signature': True,
+                'surge_coverage_complete': True,
+                'surge_event': {'start_local': '11-16 16:00',
+                                'end_local': '11-17 16:00',
+                                'temp_drop_c': -8.0, 'pressure_rise_hpa': 15.1},
+                'max_24h_temp_drop_c': -8.0, 'drop_end_local': '11-17 16:00',
+                'max_24h_pressure_rise_hpa': 17.4, 'northerly_max_ms': 4.4}}}
+        _t3, t4 = render_outlook(raw(), calc)
+        self.assertIn('香港 11/18 02:00→11/19 02:00', t4)
+        self.assertIn('東京港区 11/16 16:00→11/17 16:00', t4)
+        self.assertIn('に寒気サージの指標あり', t4)
+
+
 class RegionalDigestTests(unittest.TestCase):
     def _raw(self):
         def point(lat, lon, base):

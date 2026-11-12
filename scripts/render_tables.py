@@ -664,9 +664,21 @@ def _monsoon_analysis(cw, digest, cities=None):
     # surge thresholds (joint event, review fix 2026-11-09).
     digests = [(label, ((cities or {}).get(name) or {}).get('monsoon') or {})
                for name, label in CITY_ORDER]
-    surged = [label for label, d in digests if d.get('surge_signature')]
+    surged = [(label, d) for label, d in digests if d.get('surge_signature')]
     if surged:
-        parts.append(f"{'・'.join(surged)}に寒気サージの指標あり"
+        # The 分析 sentence names WHEN each surge window runs (user,
+        # 2026-11-12: the windows sat only in the 数値・根拠 column and the
+        # analysis left the timing unstated).
+        named = []
+        for label, d in surged:
+            ev = d.get('surge_event') or {}
+            if ev.get('start_local') and ev.get('end_local'):
+                win = (f"{ev['start_local'].replace('-', '/', 1)}"
+                       f"→{ev['end_local'].replace('-', '/', 1)}")
+                named.append(f"{label} {win}")
+            else:
+                named.append(label)
+        parts.append(f"{'・'.join(named)}に寒気サージの指標あり"
                      '（同一24h窓で低下・昇圧がともに閾値超過）')
     elif any(d.get('ready') for _, d in digests):
         unassessed = [label for label, d in digests
