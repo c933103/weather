@@ -1,6 +1,6 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-12T10:49:04.023101+00:00",
+  "generated_at_utc": "2026-11-12T20:03:04.792151+00:00",
   "target_date_jst": "2026-11-13",
   "cities": {
     "Hong Kong": {
@@ -50,7 +50,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "low visibility corroborated by humidity / dew-point spread / low cloud at the same hours"
+        "detail": "classification: mist"
       },
       "frost": {
         "status": "ok",
@@ -65,8 +65,8 @@
         "detail": "official tide events on their own stated datum (timing and heights; never mixed with STOFS levels)"
       },
       "urban_inundation": {
-        "status": "caution",
-        "detail": "rainfall-rate screen POSITIVE: assess urban inundation distinctly from river flooding"
+        "status": "ok",
+        "detail": "rainfall-rate screen negative; a negative screen — like an empty warning feed — does not establish safety"
       },
       "pollen": {
         "status": "missing",
@@ -286,8 +286,8 @@
   },
   "hazards": {
     "cyclone_verification": {
-      "status": "caution",
-      "detail": "independent-model samples retrieved but inconclusive against the warning positions"
+      "status": "ok",
+      "detail": "no active systems in the ABPW advisory; verification rows still apply to the next system"
     },
     "space_weather": {
       "status": "ok",
@@ -321,7 +321,9 @@
         "text": "STOFS levels sit on the NOAA model datum: combined levels are compared only with the STOFS model's own astronomical tide, never with official tide-table datums."
       }
     ],
-    "new_source_failures": [],
+    "new_source_failures": [
+      "jtwc/warning_31w"
+    ],
     "quality_state": "partial",
     "quality_reasons": [
       "GloFAS grids have not been matched to applicable river reaches and flood thresholds.",
@@ -329,6 +331,7 @@
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
       "jma/kagawa_warnings: stale official issue timestamp; not current warning evidence",
+      "jtwc/warning_31w: request failed (403)",
       "ecmwf/cyclone_product: request failed (404)"
     ],
     "products_invalid": []
@@ -336,7 +339,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 377286 bytes"
+      "detail": "PNG signature ok, 382622 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -344,7 +347,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 279406 bytes"
+      "detail": "PNG signature ok, 282519 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
@@ -360,7 +363,7 @@
     },
     "table3": {
       "status": "ok",
-      "detail": "3 pipe rows; shape ok; no <br>"
+      "detail": "0 pipe rows; shape ok; no <br>"
     },
     "table4": {
       "status": "ok",
