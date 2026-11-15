@@ -121,9 +121,9 @@ def _nict_digest(sources):
 def parse_space_weather(sources):
     """Digest of the NOAA SWPC space-weather products in the official bundle.
 
-    Factual extraction only: alert product ids issued, the highest G-scale
-    mentioned in the 3-day/geomagnetic outlook text, and whether anything
-    warning-level or G2-or-stronger is present (the report's 'extreme' bar).
+    Keep the 3-day GEOMAGNETIC FORECAST distinct from historical issued
+    alert messages. A literal search for 'G1' also matches the authoritative
+    phrase 'No G1 ... storms are expected', creating a false current storm.
     """
     alerts = sources.get('swpc/alerts', {}).get('response')
     product_ids = []
@@ -134,7 +134,31 @@ def parse_space_weather(sources):
         value = sources.get(key, {}).get('response')
         if isinstance(value, str):
             text += value + '\n'
-    g_scales = [int(m) for m in re.findall(r'\bG([0-5])\b', text)]
+    # The explicit greatest EXPECTED Kp in the current 3-day product is
+    # authoritative for the geomagnetic forecast, not old alerts or a
+    # historical G1 mention, and especially not 'No G1 ... expected'.
+    three_day = sources.get('swpc/three_day', {}).get('response')
+    three_day = three_day if isinstance(three_day, str) else ''
+    m = re.search(r'greatest expected 3 hr Kp.*?is\\s+([0-9]+(?:\\.[0-9]+)?)',
+                  three_day, re.I | re.S)
+    if m:
+        expected_kp = float(m.group(1))
+        forecast_g = min(5, int(expected_kp) - 4) if expected_kp >= 5 else None
+        forecast_basis = 'SWPC 3-day greatest expected Kp'
+    elif re.search(r'\\bno\\s+G1\\b', three_day, re.I):
+        forecast_g = None
+        forecast_basis = 'SWPC 3-day expressly forecasts no G1 or greater'
+    else:
+        # Older/test products sometimes provide a plain positive G-scale
+        # statement without a greatest-expected-Kp sentence. Ignore
+        # negations and probability-only mentions.
+        positives = []
+        for line in text.splitlines():
+            if '%' in line or re.search(r'\\bno\\s+G[1-5]\\b', line, re.I):
+                continue
+            positives.extend(int(x) for x in re.findall(r'\\bG([1-5])\\b', line))
+        forecast_g = max(positives) if positives else None
+        forecast_basis = 'positive G-scale statements (no explicit 3-day Kp)'
 
     def _alert_scales():
         """R/S/G scales from ISSUED alerts, freshness-windowed.
@@ -186,14 +210,16 @@ def parse_space_weather(sources):
                 cme_arrivals.append(snippet)
     kp_values = _kp_values(text)
     warning_ids = [p for p in product_ids if p and (p.startswith('WAR') or p.startswith('ALT'))]
-    max_g = max(g_scales) if g_scales else None
+    max_g = forecast_g
     return {'alerts_count': len(product_ids) if isinstance(alerts, list) else None,
             'alert_product_ids': product_ids,
             'warning_or_alert_ids': warning_ids,
             'scales': {'radio_blackout_R': alert_scales.get('R'),
                        'radiation_storm_S': alert_scales.get('S'),
-                       'geomagnetic_G': max([v for v in (alert_scales.get('G'), max(g_scales) if g_scales else None) if v is not None], default=None),
-                       'basis': 'issued alerts within 72 h before the newest alert (alerts.json spans about a month); geomagnetic also takes the outlook texts maximum'},
+                       'geomagnetic_G': forecast_g,
+                       'basis': forecast_basis + '; recent alert history is separate'},
+            'recent_alert_scales': alert_scales,
+            'geomagnetic_forecast_status': 'storm_possible' if forecast_g else 'no_storm_forecast' if three_day else 'unverified',
             'cme_arrivals': cme_arrivals[:4],
             'max_g_scale_in_outlook': max_g,
             'max_kp_in_outlook': max(kp_values) if kp_values else None,
@@ -837,7 +863,13 @@ def regional_digest(raw):
 
     def samples(area):
         rows = []
-        for point in (reg.get(area) or {}).get('grid_forecasts') or []:
+        block = reg.get(area) or {}
+        checks = block.get('checks') or []
+        for point_i, point in enumerate(block.get('grid_forecasts') or []):
+            # Invalid geographic points remain in the raw artifact but
+            # cannot generate a region-labelled pressure minimum.
+            if point_i < len(checks) and checks[point_i].get('spatial_ready') is False:
+                continue
             hourly = point.get('hourly') or {}
             for t, v in zip(hourly.get('time') or [], hourly.get('pressure_msl') or []):
                 if numeric(v):
