@@ -239,7 +239,8 @@ class SpaceWeatherTests(unittest.TestCase):
                 'Rationale: No G1 (Minor) or greater geomagnetic storms are expected.'},
             'swpc/geomag': {'ok': True, 'response': 'NOAA Kp index forecast\\n'
                 '00-03UT 1.67 1.67 3.33'},
-            'swpc/alerts': {'ok': True, 'response': [
+            'swpc/alerts': {'ok': True, 'fetched_at_utc': '2026-11-14T19:59:00+00:00',
+                'response': [
                 {'product_id': 'K05A', 'issue_datetime': '2026-11-14 05:00:00',
                  'message': 'Observed earlier: G1 geomagnetic storm level'}]},
         }
@@ -294,7 +295,8 @@ class SpaceWeatherTests(unittest.TestCase):
                        'NOAA Scale: G1 - Minor'}
         quiet = {'swpc/three_day': {'ok': True,
             'response': 'The greatest expected 3 hr Kp for Nov 14-Nov 16 2026 is 3.33'}}
-        quiet['swpc/alerts'] = {'ok': True, 'response': [base]}
+        quiet['swpc/alerts'] = {'ok': True, 'fetched_at_utc': '2026-11-14T19:59:00+00:00',
+                                'response': [base]}
         d = parse_space_weather(quiet, as_of='2026-11-14T20:00:00+00:00')
         self.assertEqual(d['warning_or_alert_ids'], ['K05W'])
         self.assertTrue(d['extreme'])
