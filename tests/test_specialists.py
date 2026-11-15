@@ -5,9 +5,10 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from collect import UTC, source_freshness, audit_hourly
+from collect import UTC, source_freshness, audit_hourly, parse_time, numeric
 from compute import select, snow_probability, cosine_zenith, wbgt
-from specialists import extract_snow, extract_pollen
+from specialists import (extract_snow, extract_pollen, extract_region,
+                         regional_grid_points, REGIONAL_FIELDS)
 
 
 class SpecialistTests(unittest.TestCase):
@@ -15,6 +16,31 @@ class SpecialistTests(unittest.TestCase):
         self.start = dt.datetime(2026, 11, 7, 21, tzinfo=UTC)
         self.end = self.start+dt.timedelta(days=1)
         self.times = [(self.start+dt.timedelta(hours=h)).isoformat() for h in range(25)]
+
+    def test_regional_sea_and_manchuria_grid_target_their_actual_geography(self):
+        sea = regional_grid_points('sea_of_japan')
+        man = regional_grid_points('manchuria')
+        self.assertEqual(len(sea), 9)
+        self.assertEqual(len(man), 9)
+        self.assertFalse(any(lat < 35 and lon >= 140 for lat, lon in sea))
+        self.assertTrue(all(40 <= lat <= 52 and 119 <= lon <= 135 for lat, lon in man))
+
+    def test_region_rejects_misplaced_pacific_point(self):
+        times = [(self.start + dt.timedelta(hours=6 * i)).isoformat()
+                 for i in range(5)]
+        grid = regional_grid_points('sea_of_japan')
+        rows = []
+        for i, (lat, lon) in enumerate(grid):
+            if i == 2:
+                lat, lon = 34.1452, 140.09853  # old Pacific-side error
+            hourly = {'time': times}
+            hourly.update({k: [1010] * len(times) for k in REGIONAL_FIELDS})
+            rows.append({'latitude': lat, 'longitude': lon, 'hourly': hourly})
+        value = extract_region('sea_of_japan', {'ok': True, 'response': rows},
+                               self.start, self.end, parse_time, numeric)
+        self.assertFalse(value['ready'])
+        self.assertFalse(value['checks'][2]['spatial_ready'])
+        self.assertTrue(value['checks'][0]['spatial_ready'])
 
     def test_preceding_hour_totals_use_right_window_boundary(self):
         h = {'time': self.times, 'rain': [100]+[0]*23+[7]}

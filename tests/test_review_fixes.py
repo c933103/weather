@@ -163,7 +163,8 @@ class CoastalDatumTests(unittest.TestCase):
 class SpaceWeatherScaleTests(unittest.TestCase):
     def test_rsg_scales_and_cme_are_distinct(self):
         sources = {
-            'swpc/alerts': {'ok': True, 'response': [
+            'swpc/alerts': {'ok': True, 'fetched_at_utc': '2026-01-14T23:59:00+00:00',
+                            'response': [
                 {'product_id': 'ALTK05', 'issue_datetime': '2026-01-14 20:00:00.000', 'message': 'Space Weather Message\nGeomagnetic K-index of 5 expected (G1 storm).'},
                 {'product_id': 'ALTXMF', 'issue_datetime': '2026-01-14 21:00:00.000', 'message': 'X-ray flare: radio blackout R2 conditions.'},
                 {'product_id': 'ALTPC0', 'issue_datetime': '2026-01-14 22:00:00.000', 'message': 'Proton event: radiation storm S1 in progress.'},
@@ -172,7 +173,9 @@ class SpaceWeatherScaleTests(unittest.TestCase):
             'swpc/geomag': {'ok': True, 'response': ''},
             'nict/report_latest': {'ok': False, 'response': None},
             'nict/report_body': {'ok': False, 'response': None}}
-        got = parse_space_weather(sources)
+        got = parse_space_weather(sources, as_of='2026-01-15T00:00:00+00:00')
+        self.assertEqual(got['rs_scale_status']['R'], 'recent_observation')
+        self.assertEqual(got['rs_scale_status']['S'], 'recent_observation')
         self.assertEqual(got['scales']['radio_blackout_R'], 2)
         self.assertEqual(got['scales']['radiation_storm_S'], 1)
         self.assertEqual(got['scales']['geomagnetic_G'], 1)
@@ -407,6 +410,33 @@ class ValidationTests(unittest.TestCase):
         items = got['cities']['Tokyo Minato Ward']
         self.assertEqual(items['aqi']['status'], 'ok')
         self.assertEqual(items['urban_inundation']['status'], 'ok')
+
+
+    def test_space_item_caution_when_alert_feed_stale(self):
+        calculated = {'cities': {}, 'cyclone_watch': {'systems': [], 'track_checks': {}},
+                      'space_weather': {'sources_ok': {'swpc/alerts': True},
+                                        'geomagnetic_forecast_status': 'no_storm_forecast',
+                                        'alert_feed_status': 'stale',
+                                        'alerts_count': 1},
+                      'target_date_jst': '2026-11-15'}
+        raw = {'cities': {}, 'sources': {},
+               'quality': {'state': 'complete', 'reasons': []}}
+        item = build_validation(raw, calculated)['hazards']['space_weather']
+        self.assertEqual(item['status'], 'caution')
+        self.assertIn('stale', item['detail'])
+
+    def test_space_item_caution_when_forecast_unverified(self):
+        # PR #1 author update: sources can all be 'ok' while the SWPC
+        # forecast text is unparsable; validation must not say 'ok'.
+        calculated = {'cities': {}, 'cyclone_watch': {'systems': [], 'track_checks': {}},
+                      'space_weather': {'sources_ok': {'swpc/alerts': True},
+                                        'geomagnetic_forecast_status': 'unverified'},
+                      'target_date_jst': '2026-01-15'}
+        raw = {'cities': {}, 'sources': {}, 'quality': {'state': 'complete', 'reasons': []}}
+        got = build_validation(raw, calculated)
+        item = got['hazards']['space_weather']
+        self.assertEqual(item['status'], 'caution')
+        self.assertIn('unverified', item['detail'])
 
 
 class ChartGeometryTests(unittest.TestCase):
