@@ -772,10 +772,13 @@ def _space_analysis(sw):
         # to 特記なし — presenting an unparsed forecast as clear
         # weather, the exact failure that commit set out to remove.
         parts.append('地磁気予報は未検証')
+    rs_status = sw.get('rs_scale_status') or {}
     if scales.get('radiation_storm_S') is not None:
-        parts.append(f"放射線嵐 S{scales['radiation_storm_S']}級")
+        mark = '（過去72h）' if rs_status.get('S') == 'recent_observation' else ''
+        parts.append(f"放射線嵐 S{scales['radiation_storm_S']}級{mark}")
     if scales.get('radio_blackout_R') is not None:
-        parts.append(f"電波障害 R{scales['radio_blackout_R']}級")
+        mark = '（過去72h）' if rs_status.get('R') == 'recent_observation' else ''
+        parts.append(f"電波障害 R{scales['radio_blackout_R']}級{mark}")
     if sw.get('cme_arrivals'):
         parts.append('CME到達の言及あり')
     if not parts and not sw.get('extreme'):
