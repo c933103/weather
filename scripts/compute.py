@@ -261,11 +261,11 @@ def parse_space_weather(sources, as_of=None):
         latest_by_id[pid] = {'issued': issued, 'message': msg, 'valid': valid,
                              'from': start, 'until': stop}
 
-    # When collection metadata is absent (older test fixtures), evaluate
-    # intervals but retain unverified provenance. An explicitly stale feed
-    # can never claim active warnings.
+    # A timestamped, freshly fetched alert feed is required before its
+    # issued messages can be reported as CURRENT warnings. A source with
+    # missing collection time is context only, never an active alert claim.
     active = sorted(((pid, detail) for pid, detail in latest_by_id.items()
-                     if detail['valid'] and feed_status != 'stale'),
+                     if detail['valid'] and feed_status == 'current'),
                     key=lambda item: item[1]['issued'], reverse=True)
     active_ids = [pid for pid, _ in active]
     active_scales = {}
@@ -278,7 +278,7 @@ def parse_space_weather(sources, as_of=None):
     # current collection/report time, not the newest (possibly stale) alert.
     recent_scales = {}
     for issued, _, msg in issued_alerts:
-        if feed_status == 'stale':
+        if feed_status != 'current':
             continue
         if not dt.timedelta(0) <= as_of - issued <= dt.timedelta(hours=72):
             continue
