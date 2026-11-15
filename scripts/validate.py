@@ -123,7 +123,7 @@ def build_validation(raw, calculated):
     space = calculated.get('space_weather') or {}
     ok_flags = space.get('sources_ok') or {}
     if space.get('geomagnetic_forecast_status') == 'unverified':
-        space_item = _item('caution', 'SWPC geomagnetic forecast is stale or unparsed; no current G-scale forecast verified')
+        space_item = _item('caution', 'SWPC geomagnetic forecast is stale or unverified (unparsed); no current G-scale forecast verified')
     elif space.get('alert_feed_status') in ('stale', 'unverified') and space.get('alerts_count') is not None:
         space_item = _item('caution', 'SWPC alert feed freshness is stale/unverified; no active-warning claim can be verified from it')
     else:
