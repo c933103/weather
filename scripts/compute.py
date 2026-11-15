@@ -139,13 +139,13 @@ def parse_space_weather(sources):
     # historical G1 mention, and especially not 'No G1 ... expected'.
     three_day = sources.get('swpc/three_day', {}).get('response')
     three_day = three_day if isinstance(three_day, str) else ''
-    m = re.search(r'greatest expected 3 hr Kp.*?is\\s+([0-9]+(?:\\.[0-9]+)?)',
+    m = re.search(r'greatest expected 3 hr Kp.*?is\s+([0-9]+(?:\.[0-9]+)?)',
                   three_day, re.I | re.S)
     if m:
         expected_kp = float(m.group(1))
         forecast_g = min(5, int(expected_kp) - 4) if expected_kp >= 5 else None
         forecast_basis = 'SWPC 3-day greatest expected Kp'
-    elif re.search(r'\\bno\\s+G1\\b', three_day, re.I):
+    elif re.search(r'\bno\s+G1\b', three_day, re.I):
         forecast_g = None
         forecast_basis = 'SWPC 3-day expressly forecasts no G1 or greater'
     else:
@@ -154,9 +154,9 @@ def parse_space_weather(sources):
         # negations and probability-only mentions.
         positives = []
         for line in text.splitlines():
-            if '%' in line or re.search(r'\\bno\\s+G[1-5]\\b', line, re.I):
+            if '%' in line or re.search(r'\bno\s+G[1-5]\b', line, re.I):
                 continue
-            positives.extend(int(x) for x in re.findall(r'\\bG([1-5])\\b', line))
+            positives.extend(int(x) for x in re.findall(r'\bG([1-5])\b', line))
         forecast_g = max(positives) if positives else None
         forecast_basis = 'positive G-scale statements (no explicit 3-day Kp)'
 
@@ -167,8 +167,8 @@ def parse_space_weather(sources):
         month of messages: a raw scan would report last month's G3 as
         today's. Only alerts issued within 72 hours before the newest
         alert count, probability-table lines (with %) are skipped, and
-        range labels (R1-R2) never match. The geomagnetic scale also
-        takes the outlook texts' own maximum (max_g_scale_in_outlook).
+        range labels (R1-R2) never match. Recent alerts are kept as
+        historical evidence; they do not define the 3-day G forecast.
         """
         if not isinstance(alerts, list) or not alerts:
             return {}
