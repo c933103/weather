@@ -1,7 +1,7 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-14T20:02:19.831012+00:00",
-  "target_date_jst": "2026-11-15",
+  "generated_at_utc": "2026-11-15T13:41:50.541041+00:00",
+  "target_date_jst": "2026-11-16",
   "cities": {
     "Hong Kong": {
       "temperature": {
@@ -50,7 +50,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "low visibility corroborated by humidity / dew-point spread / low cloud at the same hours"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -120,7 +120,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: mist"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -190,7 +190,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: mist"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -260,7 +260,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: mist"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -335,7 +335,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 380448 bytes"
+      "detail": "PNG signature ok, 319106 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -343,7 +343,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 285718 bytes"
+      "detail": "PNG signature ok, 303120 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
