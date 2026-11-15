@@ -223,9 +223,12 @@ class SpaceWeatherTests(unittest.TestCase):
         }
         digest = parse_space_weather(sources)
         self.assertEqual(digest['alerts_count'], 2)
-        self.assertIn('WARK04', digest['warning_or_alert_ids'])
-        self.assertEqual(digest['max_g_scale_in_outlook'], 2)
-        self.assertTrue(digest['extreme'])
+        self.assertIn('WARK04', digest['historical_warning_or_alert_ids'])
+        self.assertEqual(digest['warning_or_alert_ids'], [])
+        # The 3-day forecast takes precedence over a separate older/undated
+        # geomagnetic bulletin; presence of G2 text elsewhere is not G2 now.
+        self.assertEqual(digest['max_g_scale_in_outlook'], 1)
+        self.assertFalse(digest['extreme'])
 
     def test_no_g1_forecast_is_not_a_g1_warning(self):
         # Regression: SWPC explicitly says 'No G1 ... expected'. A literal
@@ -240,7 +243,7 @@ class SpaceWeatherTests(unittest.TestCase):
                 {'product_id': 'K05A', 'issue_datetime': '2026-11-14 05:00:00',
                  'message': 'Observed earlier: G1 geomagnetic storm level'}]},
         }
-        digest = parse_space_weather(sources)
+        digest = parse_space_weather(sources, as_of='2026-11-14T20:00:00+00:00')
         self.assertIsNone(digest['max_g_scale_in_outlook'])
         self.assertIsNone(digest['scales']['geomagnetic_G'])
         self.assertEqual(digest['recent_alert_scales']['G'], 1)
@@ -254,6 +257,68 @@ class SpaceWeatherTests(unittest.TestCase):
         self.assertEqual(digest['scales']['geomagnetic_G'], 2)
         self.assertEqual(digest['max_g_scale_in_outlook'], 2)
         self.assertTrue(digest['extreme'])
+
+    def test_expired_warning_does_not_override_current_quiet_forecast(self):
+        sources = {
+            'swpc/three_day': {'ok': True, 'issued_at_utc': '2026-11-14T12:30:00+00:00',
+                'response': 'The greatest expected 3 hr Kp for Nov 14-Nov 16 2026 is 3.33.\n'
+                            'Rationale: No G1 (Minor) or greater geomagnetic storms are expected.'},
+            'swpc/geomag': {'ok': True, 'issued_at_utc': '2026-11-13T22:05:00+00:00',
+                'response': 'The Kp forecast Nov 14-Nov 16 is 7.0, G3 predicted'},
+            'swpc/alerts': {'ok': True, 'response': [{
+                'product_id': 'K05W', 'issue_datetime': '2026-11-07 19:35:10.147',
+                'message': 'Space Weather Message Code: WARK05\n'
+                           'WARNING: Geomagnetic K-index of 5 expected\n'
+                           'Valid From: 2026 Nov 07 1935 UTC\n'
+                           'Valid To: 2026 Nov 08 2100 UTC\n'
+                           'NOAA Scale: G1 - Minor'}, {
+                'product_id': 'TIIA', 'issue_datetime': '2026-11-05 18:57:32.737',
+                'message': 'Space Weather Message Code: ALTTP2\n'
+                           'ALERT: Type II Radio Emission'}]},
+        }
+        d = parse_space_weather(sources, as_of='2026-11-14T20:00:00+00:00')
+        self.assertIn('K05W', d['historical_warning_or_alert_ids'])
+        self.assertEqual(d['warning_or_alert_ids'], [])
+        self.assertEqual(d['recent_alert_scales'], {})
+        self.assertIsNone(d['scales']['geomagnetic_G'])
+        self.assertEqual(d['max_kp_in_outlook'], 3.33)
+        self.assertFalse(d['extreme'])
+
+    def test_warning_only_active_with_valid_time_and_cancelled_latest(self):
+        base = {
+            'product_id': 'K05W', 'issue_datetime': '2026-11-14 18:00:00',
+            'message': 'Space Weather Message Code: WARK05\n'
+                       'WARNING: Geomagnetic K-index of 5 expected\n'
+                       'Valid From: 2026 Nov 14 1800 UTC\n'
+                       'Valid To: 2026 Nov 15 1200 UTC\n'
+                       'NOAA Scale: G1 - Minor'}
+        quiet = {'swpc/three_day': {'ok': True,
+            'response': 'The greatest expected 3 hr Kp for Nov 14-Nov 16 2026 is 3.33'}}
+        quiet['swpc/alerts'] = {'ok': True, 'response': [base]}
+        d = parse_space_weather(quiet, as_of='2026-11-14T20:00:00+00:00')
+        self.assertEqual(d['warning_or_alert_ids'], ['K05W'])
+        self.assertTrue(d['extreme'])
+        self.assertEqual(d['active_warning_intervals'][0]['valid_until_utc'],
+                         '2026-11-15T12:00:00+00:00')
+        quiet['swpc/alerts']['response'].append({
+            'product_id': 'K05W', 'issue_datetime': '2026-11-14 19:00:00',
+            'message': 'Space Weather Message Code: WARK05\n'
+                       'CANCEL WARNING: Geomagnetic K-index of 5 expected\n'
+                       'Valid From: 2026 Nov 14 1800 UTC\n'
+                       'Valid To: 2026 Nov 15 1200 UTC'})
+        d = parse_space_weather(quiet, as_of='2026-11-14T20:00:00+00:00')
+        self.assertEqual(d['warning_or_alert_ids'], [])
+        self.assertFalse(d['extreme'])
+
+    def test_outdated_swpc_forecast_is_unverified(self):
+        src = {'swpc/three_day': {
+            'ok': True, 'issued_at_utc': '2026-11-01T12:30:00+00:00',
+            'response': 'The greatest expected 3 hr Kp for Nov 01-Nov 03 2026 is 8.00'}}
+        d = parse_space_weather(src, as_of='2026-11-14T20:00:00+00:00')
+        self.assertEqual(d['geomagnetic_forecast_status'], 'unverified')
+        self.assertIsNone(d['max_g_scale_in_outlook'])
+        self.assertIsNone(d['max_kp_in_outlook'])
+        self.assertFalse(d['extreme'])
 
     def test_kp_from_current_product_phrasing(self):
         # The live 2026-11-07 products: the maximum is stated in a sentence
