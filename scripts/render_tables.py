@@ -864,7 +864,7 @@ def _ecmwf_values(cw):
                 if a.get('position_difference_km') is not None]
         head += f"｜IFS局所中心候補{count}点"
         if gaps:
-            head += f"・JTWC位置差中央値{fmt(min(gaps), 0)}km"
+            head += f"・JTWC位置差中央値{fmt(min(gaps), 1)}km"
         head += '（限定探索・EC46進路未検証）'
     elif mins:
         head += '・中心候補未確認'
