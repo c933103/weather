@@ -123,7 +123,9 @@ def build_validation(raw, calculated):
     space = calculated.get('space_weather') or {}
     ok_flags = space.get('sources_ok') or {}
     if space.get('geomagnetic_forecast_status') == 'unverified':
-        space_item = _item('caution', 'SWPC sources retrieved but the 3-day geomagnetic forecast could not be parsed; the G-scale forecast is unverified, not clear')
+        space_item = _item('caution', 'SWPC geomagnetic forecast is stale or unparsed; no current G-scale forecast verified')
+    elif space.get('alert_feed_status') == 'stale':
+        space_item = _item('caution', 'SWPC alert feed was retrieved from a stale collection; no active-warning claim can be verified from it')
     else:
         space_item = _item('ok', 'SWPC and NICT sources current; R/S/G scales are reported as distinct quantities') \
             if all(v for v in ok_flags.values()) else \
