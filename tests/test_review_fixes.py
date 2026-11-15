@@ -172,7 +172,9 @@ class SpaceWeatherScaleTests(unittest.TestCase):
             'swpc/geomag': {'ok': True, 'response': ''},
             'nict/report_latest': {'ok': False, 'response': None},
             'nict/report_body': {'ok': False, 'response': None}}
-        got = parse_space_weather(sources)
+        got = parse_space_weather(sources, as_of='2026-01-15T00:00:00+00:00')
+        self.assertEqual(got['rs_scale_status']['R'], 'recent_observation')
+        self.assertEqual(got['rs_scale_status']['S'], 'recent_observation')
         self.assertEqual(got['scales']['radio_blackout_R'], 2)
         self.assertEqual(got['scales']['radiation_storm_S'], 1)
         self.assertEqual(got['scales']['geomagnetic_G'], 1)
