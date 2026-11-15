@@ -143,11 +143,11 @@ class RenderSmokeTests(unittest.TestCase):
             coverage = render_chart.render(raw, '2026-11-08', out, flavour='aifs')
             self.assertTrue(out.exists())
             self.assertGreater(out.stat().st_size, 10000)
-            # Only the AIFS span is plotted: 16 complete local days of the
-            # 17-day series carry a day high; the rest of the 28-day frame
-            # stays blank (no EC46 fill).
-            self.assertEqual(coverage['Tokyo Minato Ward']['high_days'], 16)
-            self.assertEqual(coverage['Hong Kong']['high_days'], 16)
+            # The AIFS span covers the whole 320h frame: all 14 daily
+            # slots carry a day high, and nothing beyond 320h is printed
+            # (user, 2026-11-15 — the frame was 28 days before that).
+            self.assertEqual(coverage['Tokyo Minato Ward']['high_days'], 14)
+            self.assertEqual(coverage['Hong Kong']['high_days'], 14)
         note = render_chart.cascade_note(
             {name: raw['cities'][name] for name in raw['cities']},
             dt.date(2026, 11, 8), hourly_key='aifs_chart_hourly')
@@ -157,17 +157,25 @@ class RenderSmokeTests(unittest.TestCase):
     def test_aifs_beyond_horizon_slots_blank(self):
         from chart_data import build_chart_data
         raw = _synthetic_aifs_raw()
+        # Shorten the AIFS series to 40 stamps (10 days) so its horizon
+        # falls inside the 14-slot (320h) frame: the last AIFS-sampled
+        # local date is 11/17 (slot 9); from 11/18 (slot 10) on, slots
+        # are blank: empty emoji, no grade.
+        for city in raw['cities'].values():
+            hr = city['aifs_chart_hourly']
+            for key in ('time', 'temperature_2m', 'weather_code',
+                        'temperature_2m_min', 'temperature_2m_max',
+                        'sample_model'):
+                hr[key] = hr[key][:40]
         data, _ = build_chart_data(raw, '2026-11-08', flavour='aifs')
         tokyo = data['cities'][0]
         # Day 0 (11/08) is inside the AIFS span: a real icon and grade.
         self.assertNotEqual(tokyo['icons'][0]['emoji'], '')
         self.assertIsNotNone(tokyo['grades'][0])
-        # The last AIFS-sampled local date is 11/24 (slot 16); from 11/25
-        # (slot 17) on, slots are blank: empty emoji, no grade.
-        self.assertEqual(tokyo['icons'][17], {'emoji': '', 'asset': None})
-        self.assertIsNone(tokyo['grades'][17])
-        self.assertEqual(tokyo['icons'][27], {'emoji': '', 'asset': None})
-        self.assertIsNone(tokyo['grades'][27])
+        self.assertEqual(tokyo['icons'][10], {'emoji': '', 'asset': None})
+        self.assertIsNone(tokyo['grades'][10])
+        self.assertEqual(tokyo['icons'][13], {'emoji': '', 'asset': None})
+        self.assertIsNone(tokyo['grades'][13])
 
 
 class DailyExtremaTests(unittest.TestCase):
