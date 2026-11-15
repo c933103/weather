@@ -246,6 +246,20 @@ class RegionalDigestTests(unittest.TestCase):
         self.assertEqual(d['manchuria']['latitude'], 44.1)
         self.assertEqual(d['sea_of_japan']['min_pressure_hpa'], 1010.0)
 
+    def test_reject_spatially_invalid_pressure_minimum(self):
+        raw = self._raw()
+        sea = raw['regional_forecasts']['sea_of_japan']
+        wrong = dict(sea['grid_forecasts'][0])
+        wrong['latitude'] = 34.1452
+        wrong['longitude'] = 140.09853  # Pacific, not Sea of Japan
+        wrong['hourly'] = dict(wrong['hourly'])
+        wrong['hourly']['pressure_msl'] = [900.0] * 12
+        sea['grid_forecasts'].append(wrong)
+        sea['checks'] = [{'spatial_ready': True}, {'spatial_ready': False}]
+        digest = regional_digest(raw)
+        self.assertEqual(digest['sea_of_japan']['min_pressure_hpa'], 1010.0)
+        self.assertEqual(digest['sea_of_japan']['longitude'], 133.5)
+
     def test_digest_covers_the_widened_etc_grids(self):
         # Grid set widened 2026-11-12 (user): south-coast / baiu corridors
         # and the northern lows, not only the two winter grids.
