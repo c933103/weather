@@ -127,8 +127,8 @@ def parse_space_weather(sources, as_of=None):
     """
     as_of = parse_time(as_of) if as_of is not None else dt.datetime.now(dt.timezone.utc)
     alerts_source = sources.get('swpc/alerts') or {}
-    alerts = alerts_source.get('response')
-    alerts = alerts if isinstance(alerts, list) else []
+    raw_alerts = alerts_source.get('response')
+    alerts = raw_alerts if isinstance(raw_alerts, list) else []
     product_ids = [a.get('product_id') for a in alerts if isinstance(a, dict)]
     three_source = sources.get('swpc/three_day') or {}
     geomag_source = sources.get('swpc/geomag') or {}
@@ -235,7 +235,9 @@ def parse_space_weather(sources, as_of=None):
             continue
         pid = str(entry.get('product_id') or '')
         msg = str(entry.get('message') or '')
-        if re.search(r'\b(?:WARNING|WATCH|ALERT)\b', msg, re.I) and pid and pid not in historical_ids:
+        if (pid and pid not in historical_ids and
+                (pid.startswith(('WAR', 'ALT')) or
+                 re.search(r'\b(?:WARNING|WATCH|ALERT)\b', msg, re.I))):
             historical_ids.append(pid)
         try:
             issued = parse_time(str(entry.get('issue_datetime')).replace(' ', 'T'))
@@ -295,7 +297,7 @@ def parse_space_weather(sources, as_of=None):
             snippet = ' '.join(line.split())[:160]
             if snippet and snippet not in cme_arrivals:
                 cme_arrivals.append(snippet)
-    return {'alerts_count': len(product_ids),
+    return {'alerts_count': len(product_ids) if isinstance(raw_alerts, list) else None,
             'alert_product_ids': product_ids,
             'historical_warning_or_alert_ids': historical_ids,
             'warning_or_alert_ids': active_ids,
@@ -304,10 +306,15 @@ def parse_space_weather(sources, as_of=None):
                 'valid_from_utc': detail['from'].isoformat(),
                 'valid_until_utc': detail['until'].isoformat()}
                 for pid, detail in active],
-            'scales': {'radio_blackout_R': active_scales.get('R'),
-                       'radiation_storm_S': active_scales.get('S'),
+            'scales': {'radio_blackout_R': active_scales.get('R') or recent_scales.get('R'),
+                       'radiation_storm_S': active_scales.get('S') or recent_scales.get('S'),
                        'geomagnetic_G': forecast_g,
-                       'basis': forecast_basis + '; active warnings checked by validity window'},
+                       'basis': forecast_basis + '; R/S are active or recent observed (72h), NOT a predicted R/S forecast'},
+            'rs_scale_status': {
+                'R': 'active_warning' if active_scales.get('R') else
+                     'recent_observation' if recent_scales.get('R') else None,
+                'S': 'active_warning' if active_scales.get('S') else
+                     'recent_observation' if recent_scales.get('S') else None},
             'recent_alert_scales': recent_scales,
             'alert_feed_status': feed_status,
             'geomagnetic_forecast_status': forecast_status,
