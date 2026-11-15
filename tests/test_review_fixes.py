@@ -163,7 +163,8 @@ class CoastalDatumTests(unittest.TestCase):
 class SpaceWeatherScaleTests(unittest.TestCase):
     def test_rsg_scales_and_cme_are_distinct(self):
         sources = {
-            'swpc/alerts': {'ok': True, 'response': [
+            'swpc/alerts': {'ok': True, 'fetched_at_utc': '2026-01-14T23:59:00+00:00',
+                            'response': [
                 {'product_id': 'ALTK05', 'issue_datetime': '2026-01-14 20:00:00.000', 'message': 'Space Weather Message\nGeomagnetic K-index of 5 expected (G1 storm).'},
                 {'product_id': 'ALTXMF', 'issue_datetime': '2026-01-14 21:00:00.000', 'message': 'X-ray flare: radio blackout R2 conditions.'},
                 {'product_id': 'ALTPC0', 'issue_datetime': '2026-01-14 22:00:00.000', 'message': 'Proton event: radiation storm S1 in progress.'},
