@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from render_tables import render_outlook
-from compute import regional_digest
+from compute import regional_digest, parse_space_weather
 
 WARNING = """WTPN31 PGTW 072100
 MSGID/GENADMIN/JOINT TYPHOON WRNCEN PEARL HARBOR HI//
@@ -168,6 +168,27 @@ class RenderOutlookTests(unittest.TestCase):
         self.assertIn('ABPW言及 2行', t4)
         self.assertIn('| 宇宙天気 | 特記なし | Kp最大 2 |', t4)
 
+
+    def test_expired_swpc_warning_not_rendered_as_current_event(self):
+        sw = parse_space_weather({
+            'swpc/three_day': {'ok': True,
+                'response': 'The greatest expected 3 hr Kp for Nov 14-Nov 16 2026 is 3.33.\n'
+                            'Rationale: No G1 (Minor) or greater geomagnetic storms are expected.'},
+            'swpc/alerts': {'ok': True, 'response': [{
+                'product_id': 'WARK05', 'issue_datetime': '2026-11-07 19:35:00',
+                'message': 'WARNING: Geomagnetic K-index of 5 expected\n'
+                           'Valid From: 2026 Nov 07 1935 UTC\n'
+                           'Valid To: 2026 Nov 08 2100 UTC\n'
+                           'NOAA Scale: G1 - Minor'}]},
+        }, as_of='2026-11-14T20:00:00+00:00')
+        self.assertIn('WARK05', sw['historical_warning_or_alert_ids'])
+        self.assertEqual(sw['warning_or_alert_ids'], [])
+        calc = calculated()
+        calc['space_weather'] = sw
+        _t3, table = render_outlook(raw(), calc)
+        self.assertIn('| 宇宙天気 | 特記なし | Kp最大 3.3 |', table)
+        self.assertNotIn('WARK05', table)
+        self.assertNotIn('警報級の事象', table)
 
     def test_table4_unverified_space_forecast_is_not_tokki_nashi(self):
         # Regression (PR #1 author update): the digest marks an
