@@ -17,16 +17,17 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from chart_data import (CASCADE_LABELS, SITES, build_chart_data, cascade_note,
-                        cascade_segments, daily_icon, ec46_probability_icon,
-                        enough_coverage, extrema_by_date, extrema_runs,
-                        get_hourly, member_probability_icon, parse_utc, wmo_emoji)
+from chart_data import (CASCADE_LABELS, CHART_DAYS, SITES, build_chart_data,
+                        cascade_note, cascade_segments, date_label, daily_icon,
+                        ec46_probability_icon, enough_coverage, extrema_by_date,
+                        extrema_runs, get_hourly, member_probability_icon,
+                        parse_utc, wmo_emoji)
 
 __all__ = ['render', 'build_chart_data', 'cascade_note', 'cascade_segments',
-           'daily_icon', 'ec46_probability_icon', 'enough_coverage',
+           'date_label', 'daily_icon', 'ec46_probability_icon', 'enough_coverage',
            'extrema_by_date', 'extrema_runs', 'get_hourly',
            'member_probability_icon', 'parse_utc', 'wmo_emoji',
-           'CASCADE_LABELS', 'SITES']
+           'CASCADE_LABELS', 'CHART_DAYS', 'SITES']
 
 _HERE = Path(__file__).resolve().parent
 

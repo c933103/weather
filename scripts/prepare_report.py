@@ -54,8 +54,8 @@ def prepare(output):
         products['chart_error'] = f'{type(exc).__name__}: {exc}'
         chart_path.unlink(missing_ok=True)
         chart_path.with_suffix('.svg').unlink(missing_ok=True)
-    # AIFS variant of the 28-day chart (same design; AIFS ENS cascade into
-    # the same EC46 tail). Its failure never blocks the main products.
+    # AIFS variant of the chart (same design; AIFS ensemble only — no EC46
+    # tail). Its failure never blocks the main products.
     chart_aifs_path = latest / 'chart_aifs.png'
     chart_aifs_path.unlink(missing_ok=True)
     chart_aifs_path.with_suffix('.svg').unlink(missing_ok=True)
