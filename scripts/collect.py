@@ -221,7 +221,7 @@ def combined_temperature(ifs, extended, ens_mean=None,
                          ens_marker='ecmwf_ifs025_ensemble_mean',
                          ext_marker='ecmwf_ec46_ensemble_mean_36km',
                          tail_note=None):
-    """Reliability cascade for the 28-day chart series.
+    """Reliability cascade for the 320-hour chart series.
 
     Most reliable source first: ECMWF IFS 9km deterministic while it lasts,
     then the ECMWF IFS ensemble mean, then the EC46 ensemble mean — each tier
@@ -891,7 +891,7 @@ def collect(day, out):
     start = dt.datetime.combine(day, dt.time(6), JST).astimezone(UTC)
     end = start+dt.timedelta(hours=24)
     long_end = start+dt.timedelta(hours=384)
-    chart_end = start+dt.timedelta(days=28)
+    chart_end = start+dt.timedelta(hours=320)
     root = {'schema': 'east_asia_weather_raw_v3', 'phase': 'collection',
             'reader': {'min_reader_version': 2,
                        'pin': 'reader scripts are used at this collector commit, never refreshed from floating main'},
@@ -900,7 +900,7 @@ def collect(day, out):
             'long_end_utc': long_end.isoformat(), 'chart_end_utc': chart_end.isoformat(), 'cities': {}, 'sources': {},
             'collector_commit': os.getenv('GITHUB_SHA'), 'workflow_run_id': os.getenv('GITHUB_RUN_ID'),
             'quality': {'ready': False, 'core_24h_ready': False, 'air_24h_ready': False,
-                        'chart_28d_ready': False, 'reasons': []}}
+                        'chart_320h_ready': False, 'reasons': []}}
     jobs = build_jobs(day)
     with tempfile.TemporaryDirectory(prefix='weather-coastal-') as coastal_cache, futures.ThreadPoolExecutor(max_workers=8) as pool:
         coastal_future = pool.submit(collect_coastal, start, end, now, coastal_cache)
@@ -1066,7 +1066,7 @@ def collect(day, out):
                                 'night_low': v.get('temp_nightlow_member_mean'),
                                 'source': 'ec46', 'members': v.get('temp_members')}
             city['member_extrema'] = mext
-            city['checks']['chart_28d'] = audit_long(city['chart_hourly'], start, chart_end)
+            city['checks']['chart_320h'] = audit_long(city['chart_hourly'], start, chart_end)
             # AIFS variant of the chart (user, 2026-11-08): the AIFS ensemble
             # alone — days beyond the AIFS horizon stay blank on that chart;
             # no other model fills them (user correction, 2026-11-08: the
@@ -1098,7 +1098,7 @@ def collect(day, out):
             aifs_end = parse_time(ens_times[-1]) if ens_times else start
             city['checks']['aifs_chart_span'] = audit_long(
                 city['aifs_chart_hourly'], start, aifs_end)
-            chart_checks.append(city['checks']['chart_28d']['ready'])
+            chart_checks.append(city['checks']['chart_320h']['ready'])
         if key in ('tokyo_minato', 'takamatsu'):
             parts = [jma_hourly_tides(root['sources'][f'{key}/hourly_tide_{year}'], year, start, end,
                      'Tokyo (Harumi)' if key == 'tokyo_minato' else 'Takamatsu') for year in {day.year, (day+dt.timedelta(days=1)).year}]
@@ -1137,7 +1137,7 @@ def collect(day, out):
     q['core_24h_ready'] = all(core_checks)
     q['air_24h_ready'] = all(air_checks)
     q['gfs_24h_ready'] = all(gfs_checks)
-    q['chart_28d_ready'] = len(chart_checks) == 2 and all(chart_checks)
+    q['chart_320h_ready'] = len(chart_checks) == 2 and all(chart_checks)
     q['official_tides_ready'] = all(c['astronomical_tide']['ready'] for c in root['cities'].values())
     q['all_city_hourly_tides_ready'] = all_city_hourly_tides_ready(root['cities'].values())
     taipei_ref = (root['cities'].get('Taipei', {}).get('astronomical_tide', {})
@@ -1170,7 +1170,7 @@ def collect(day, out):
             q['reasons'].append(f'{name}: request failed ({source.get("http_status")})')
         elif source.get('freshness', {}).get('status') == 'stale':
             q['reasons'].append(f'{name}: stale official issue timestamp; not current warning evidence')
-    for gate in ('core_24h_ready', 'air_24h_ready', 'chart_28d_ready', 'official_tides_ready', 'all_city_hourly_tides_ready', 'solar_3day_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready'):
+    for gate in ('core_24h_ready', 'air_24h_ready', 'chart_320h_ready', 'official_tides_ready', 'all_city_hourly_tides_ready', 'solar_3day_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready'):
         if not q[gate]:
             q['reasons'].append(f'{gate}: failed')
     q['ready'] = not q['reasons']
@@ -1222,7 +1222,7 @@ def main():
     root = collect(day, args.out_dir)
     # Missing core numerical inputs are operational failure, but files are still
     # published by the workflow so the 06:00 report can explain the exact gaps.
-    gates = ('core_24h_ready', 'air_24h_ready', 'chart_28d_ready', 'all_city_hourly_tides_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready')
+    gates = ('core_24h_ready', 'air_24h_ready', 'chart_320h_ready', 'all_city_hourly_tides_ready', 'coastal_surge_24h_ready', 'snow_probability_inputs_ready', 'regional_384h_sample_inputs_ready')
     return 0 if all(root['quality'].get(k) for k in gates) else 2
 
 

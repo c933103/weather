@@ -1107,9 +1107,11 @@ def compute_bundle(raw):
     for key in ('hong_kong', 'tokyo_minato'):
         name = CITIES[key][0]
         if name in raw.get('cities', {}):
-            chart_confidence[name] = chart_confidence_for_city(raw['cities'][name], day0, days=28)
+            # Chart horizon (user, 2026-11-15): 320h = 14 daily slots
+            # (chart_data.CHART_DAYS); grades beyond it are never drawn.
+            chart_confidence[name] = chart_confidence_for_city(raw['cities'][name], day0, days=14)
             chart_confidence_aifs[name] = chart_confidence_for_city(
-                raw['cities'][name], day0, days=28, ensemble_key='aifs_ensemble')
+                raw['cities'][name], day0, days=14, ensemble_key='aifs_ensemble')
             aifs_crosscheck[name] = _aifs_single_crosscheck(raw['cities'][name])
     return {'schema': 'east_asia_weather_calculated_v1',
             'target_date_jst': raw['target_date_jst'], 'window_start_utc': start.isoformat(),

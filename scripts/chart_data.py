@@ -18,6 +18,21 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 JST = ZoneInfo('Asia/Tokyo')
+
+# Chart horizon (user, 2026-11-15): neither chart prints beyond 320 hours —
+# 14 daily slots by this chart's established convention (320h = 14 daily
+# points, as 384h was 16). Earlier horizons: 320h at creation, 384h from
+# 2026-11-06, 28 days from 2026-11-07 to 2026-11-15.
+CHART_DAYS = 14
+WEEKDAY_KANJI = '日月火水木金土'  # index 0 = Sunday
+
+
+def date_label(d):
+    """Axis label for one chart day: the date with its day of week beside it
+    (user, 2026-11-15), e.g. '11/16(月)'."""
+    return f"{d.strftime('%m/%d')}({WEEKDAY_KANJI[(d.weekday() + 1) % 7]})"
+
+
 SITES = {
     'Tokyo Minato Ward': ('東京都港区', ZoneInfo('Asia/Tokyo')),
     'Hong Kong': ('香港', ZoneInfo('Asia/Hong_Kong')),
@@ -75,7 +90,7 @@ def enough_coverage(points, start, end):
     return True,valid
 
 
-def extrema_by_date(points, day0, site_tz, max_days=28, member_extrema=None):
+def extrema_by_date(points, day0, site_tz, max_days=CHART_DAYS, member_extrema=None):
     # All extrema windows are *local* calendar day/noon windows. Their graphical
     # positions are slot indices regardless of their actual forecast hour.
     # Points are (stamp, value, interval_min, interval_max, sample_model).
@@ -169,7 +184,7 @@ def cascade_segments(row,tz,day0=None,hourly_key='chart_hourly'):
     for t,m in zip(ts,models):
         if not m:continue
         d=parse_utc(t).astimezone(tz).date()
-        if day0 is not None and not (day0<=d<=day0+timedelta(days=28)):
+        if day0 is not None and not (day0<=d<=day0+timedelta(days=CHART_DAYS)):
             continue
         if segments and segments[-1][0]==m:
             segments[-1]=(m,segments[-1][1],d)
@@ -302,7 +317,7 @@ def build_chart_data(raw, target_day, flavour='ifs'):
         grades = {}
         if chart_confidence_for_city is not None:
             try:
-                grades = chart_confidence_for_city(row, d0, days=28,
+                grades = chart_confidence_for_city(row, d0, days=CHART_DAYS,
                                                    ensemble_key=ens_key)
             except Exception:
                 grades = {}
@@ -312,7 +327,7 @@ def build_chart_data(raw, target_day, flavour='ifs'):
         last_day = arr[-1][0].astimezone(SITES[city][1]).date() if arr else d0
         icons = []
         grade_list = []
-        for i in range(28):
+        for i in range(CHART_DAYS):
             dd = d0 + timedelta(days=i)
             if flavour == 'aifs' and dd > last_day:
                 icons.append({'emoji': '', 'asset': None})
@@ -338,7 +353,7 @@ def build_chart_data(raw, target_day, flavour='ifs'):
     raws = {city: (raw.get('cities') or {}).get(city, {}) for city in CITY_ORDER}
     data = {'schema': 'east_asia_weather_chart_data_v1',
             'target_date': target_day,
-            'dates': [(d0 + timedelta(days=i)).strftime('%m/%d') for i in range(28)],
+            'dates': [date_label(d0 + timedelta(days=i)) for i in range(CHART_DAYS)],
             'y_min': math.floor(min(bounds) - 2), 'y_max': math.ceil(max(bounds) + 2),
             'cascade_note': cascade_note(raws, d0, hourly_key=hourly_key) + (
                 ' 最高・最低はメンバー極値の平均（アンサンブル平均系列の極値ではない）。'

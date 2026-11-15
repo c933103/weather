@@ -40,6 +40,7 @@ cities <- lapply(d$cities, function(c) list(
     list(x = num(p[[1]]), y = num(p[[2]]), kind = as.character(p[[3]])))),
   icons = c$icons, grades = c$grades))
 dates <- as.character(unlist(d$dates))
+n_days <- length(dates)
 y_min <- num(d$y_min); y_max <- num(d$y_max)
 cascade_note <- if (is.null(d$cascade_note)) '' else as.character(d$cascade_note)
 title_suffix <- if (is.null(d$title_suffix)) '' else as.character(d$title_suffix)
@@ -120,8 +121,8 @@ p <- ggplot() +
   scale_colour_manual(values = COLOUR_MAP, breaks = series_levels) +
   scale_linetype_manual(values = c('solid', 'solid', 'dashed', 'dashed'),
                         breaks = series_levels) +
-  scale_x_continuous(breaks = 0:27, labels = dates, limits = c(-0.08, 28.0),
-                     expand = c(0, 0)) +
+  scale_x_continuous(breaks = 0:(n_days - 1), labels = dates,
+                     limits = c(-0.08, n_days), expand = c(0, 0)) +
   scale_y_continuous(breaks = major_y, minor_breaks = seq(y_min, y_max, by = 1),
                      limits = c(y_min, y_max), expand = c(0, 0)) +
   labs(x = NULL, y = '気温（℃）', colour = NULL, linetype = NULL) +
@@ -167,7 +168,7 @@ draw_figure <- function() {
   txt <- function(label, x, y, size, ...) grid.text(
     label, x = unit(x, 'in'), y = unit(y, 'in'), just = 'left',
     gp = gpar(fontfamily = FONT, fontsize = size, ...))
-  txt(paste0('香港・東京都港区｜28日間気温予報', title_suffix), PANEL$x, 0.947 * H, 20, fontface = 'bold')
+  txt(paste0('香港・東京都港区｜', n_days, '日間気温予報', title_suffix), PANEL$x, 0.947 * H, 20, fontface = 'bold')
   txt('実線：日中最高（当日）／破線：夜間最低（日付間・当日正午～翌日正午の最低）｜淡色＝高低の連続帯',
       PANEL$x, 0.908 * H, 10.8)
   txt(paste0('日付位置は時刻を示さない。下段の自信度は', confidence_source, 'の日最高気温の拡散より。気温の接続順は下部のデータ源注記参照。'),
@@ -177,8 +178,8 @@ draw_figure <- function() {
     grid.text(city$label, x = unit(0.024 * W, 'in'), y = unit(ROW_Y[ri], 'in'),
               just = 'left', gp = gpar(fontfamily = FONT, fontsize = 13,
                                        fontface = 'bold', col = CITY_COLOURS[ri]))
-    for (i in 0:27) {
-      cx <- PANEL$x + PANEL$w * (i / 28)
+    for (i in 0:(n_days - 1)) {
+      cx <- PANEL$x + PANEL$w * (i / n_days)
       icon <- city$icons[[i + 1]]
       grade <- city$grades[[i + 1]]
       grade_txt <- if (is.null(grade)) '未評価' else as.character(grade)
