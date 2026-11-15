@@ -227,6 +227,34 @@ class SpaceWeatherTests(unittest.TestCase):
         self.assertEqual(digest['max_g_scale_in_outlook'], 2)
         self.assertTrue(digest['extreme'])
 
+    def test_no_g1_forecast_is_not_a_g1_warning(self):
+        # Regression: SWPC explicitly says 'No G1 ... expected'. A literal
+        # G1 regex previously classified this as a forecast G1 storm.
+        sources = {
+            'swpc/three_day': {'ok': True, 'response':
+                'The greatest expected 3 hr Kp for Nov 14-Nov 16 2026 is 3.33.\\n'
+                'Rationale: No G1 (Minor) or greater geomagnetic storms are expected.'},
+            'swpc/geomag': {'ok': True, 'response': 'NOAA Kp index forecast\\n'
+                '00-03UT 1.67 1.67 3.33'},
+            'swpc/alerts': {'ok': True, 'response': [
+                {'product_id': 'K05A', 'issue_datetime': '2026-11-14 05:00:00',
+                 'message': 'Observed earlier: G1 geomagnetic storm level'}]},
+        }
+        digest = parse_space_weather(sources)
+        self.assertIsNone(digest['max_g_scale_in_outlook'])
+        self.assertIsNone(digest['scales']['geomagnetic_G'])
+        self.assertEqual(digest['recent_alert_scales']['G'], 1)
+        self.assertEqual(digest['geomagnetic_forecast_status'], 'no_storm_forecast')
+        self.assertFalse(digest['extreme'])
+
+    def test_swpc_expected_kp_defines_g2_forecast(self):
+        digest = parse_space_weather({'swpc/three_day': {'ok': True, 'response':
+            'The greatest expected 3 hr Kp for Nov 15-Nov 17 2026 is 6.00.\\n'
+            'G2 (Moderate) geomagnetic storms are expected.'}})
+        self.assertEqual(digest['scales']['geomagnetic_G'], 2)
+        self.assertEqual(digest['max_g_scale_in_outlook'], 2)
+        self.assertTrue(digest['extreme'])
+
     def test_kp_from_current_product_phrasing(self):
         # The live 2026-11-07 products: the maximum is stated in a sentence
         # and tabulated in UT-anchored rows; neither matches a 'Kp= N' form.
