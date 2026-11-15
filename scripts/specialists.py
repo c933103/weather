@@ -14,6 +14,28 @@ REGIONS = {
     'east_china_sea': ('East China Sea', (27, 34), (123, 131)),
     'okhotsk': ('Sea of Okhotsk / Kurils', (44, 56), (142, 156)),
 }
+# Hand-selected points keep named maritime/continental regions from leaking
+# into a neighbouring area. A rectangular 3x3 Sea-of-Japan box previously
+# sampled 34.1N 140.1E (the Pacific off Boso), which was then falsely
+# labelled as a Japanese-Sea pressure minimum in the daily outlook.
+REGIONAL_GRID_POINTS = {
+    'manchuria': ((41.5, 121.5), (41.5, 125.5), (41.5, 129.0),
+                  (45.0, 121.5), (45.0, 125.5), (45.0, 129.0),
+                  (49.0, 121.5), (49.0, 125.5), (49.0, 129.0)),
+    'sea_of_japan': ((36.3, 130.5), (36.3, 132.6), (36.3, 134.4),
+                     (39.0, 131.2), (39.0, 134.0), (39.0, 137.0),
+                     (42.0, 135.0), (42.0, 137.0), (42.0, 138.5)),
+}
+
+
+def regional_grid_points(key):
+    if key in REGIONAL_GRID_POINTS:
+        return REGIONAL_GRID_POINTS[key]
+    _, lats, lons = REGIONS[key]
+    return tuple((lat, lon) for lat in (lats[0], sum(lats) / 2, lats[1])
+                 for lon in (lons[0], sum(lons) / 2, lons[1]))
+
+
 REGIONAL_FIELDS = ('temperature_2m', 'temperature_2m_spread', 'pressure_msl',
                    'pressure_msl_spread', 'wind_speed_10m', 'wind_gusts_10m',
                    'precipitation', 'snowfall')
@@ -47,8 +69,8 @@ def build_specialist_jobs(cities):
     for key, code in [('tokyo_minato', '13103'), ('takamatsu', '37201')]:
         jobs[f'{key}/pollen'] = (f'https://site.weathernews.jp/site/pollen/json/fcst/city_r5/{code}.json', None, False)
     jobs['pollen/publication_config'] = ('https://weathernews.jp/pollen/html_resources/city/bundle.min.js', None, False)
-    for key, (_, lats, lons) in REGIONS.items():
-        grid = [(lat, lon) for lat in (lats[0], sum(lats)/2, lats[1]) for lon in (lons[0], sum(lons)/2, lons[1])]
+    for key in REGIONS:
+        grid = regional_grid_points(key)
         jobs[f'regional/{key}'] = ('https://seasonal-api.open-meteo.com/v1/seasonal', {
             'latitude': ','.join(str(v[0]) for v in grid), 'longitude': ','.join(str(v[1]) for v in grid),
             'models': 'ecmwf_ec46_ensemble_mean', 'hourly': ','.join(REGIONAL_FIELDS),
@@ -216,7 +238,8 @@ def extract_region(key, source, start, end, parse, numeric):
     response = source.get('response')
     rows = response if source['ok'] and isinstance(response, list) else []
     checks = []
-    for row in rows:
+    targets = regional_grid_points(key)
+    for n, row in enumerate(rows):
         h = row.get('hourly', {})
         try:
             times = [parse(t) for t in h.get('time', [])]
@@ -227,9 +250,22 @@ def extract_region(key, source, start, end, parse, numeric):
         gaps = [(b-a).total_seconds()/3600 for a, b in zip(selected, selected[1:])]
         cover = bool(selected) and selected[0] <= start and selected[-1] >= end and all(0 < g <= 6 for g in gaps)
         fields = {v: len(h.get(v, [])) == len(times) and all(numeric(h[v][i]) for i in idx) for v in REGIONAL_FIELDS}
+        # Open-Meteo may snap requested points to its model grid. For the
+        # curated areas, reject any point substantially outside its intended
+        # footprint instead of silently mislabelling another sea/landmass.
+        spatial_ok = True
+        if key in REGIONAL_GRID_POINTS:
+            target = targets[n] if n < len(targets) else None
+            lat, lon = row.get('latitude'), row.get('longitude')
+            spatial_ok = bool(target and isinstance(lat, (int, float)) and
+                              isinstance(lon, (int, float)) and
+                              abs(lat - target[0]) <= 1.0 and
+                              abs(lon - target[1]) <= 1.0)
         checks.append({'latitude': row.get('latitude'), 'longitude': row.get('longitude'),
-                       'time_coverage': cover, 'fields': fields, 'ready': cover and all(fields.values())})
+                       'spatial_ready': spatial_ok, 'time_coverage': cover,
+                       'fields': fields, 'ready': spatial_ok and cover and all(fields.values())})
     return {'name': name, 'bounds': {'latitude': lats, 'longitude': lons},
+            'requested_points': targets,
             'model': 'ecmwf_ec46_ensemble_mean_36km', 'sampling': '3x3 regional grid; native six-hour means and temperature/pressure spread',
             'limitations': 'Coarse guidance cannot resolve cyclone cores or establish precise 16-day event timing. Combine with official tracks, warnings and uncertainty.',
             'ready': len(rows) == 9 and all(c['ready'] for c in checks), 'checks': checks, 'grid_forecasts': rows}
