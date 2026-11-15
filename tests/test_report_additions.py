@@ -310,6 +310,36 @@ class SpaceWeatherTests(unittest.TestCase):
         self.assertEqual(d['warning_or_alert_ids'], [])
         self.assertFalse(d['extreme'])
 
+    def test_newer_geomagnetic_bulletin_supersedes_older_three_day(self):
+        sources = {
+            'swpc/three_day': {'ok': True, 'issued_at_utc': '2026-11-14T12:30:00+00:00',
+                'response': 'The greatest expected 3 hr Kp for Nov 14-Nov 16 2026 is 3.33.'},
+            'swpc/geomag': {'ok': True, 'issued_at_utc': '2026-11-14T22:05:00+00:00',
+                'response': 'NOAA Kp index forecast 14 Nov - 16 Nov\n'
+                            '00-03UT 4.67 5.00 3.67\n03-06UT 3.67 4.33 2.67'},
+        }
+        d = parse_space_weather(sources, as_of='2026-11-14T23:00:00+00:00')
+        self.assertEqual(d['geomagnetic_forecast_source'], 'swpc/geomag')
+        self.assertEqual(d['max_g_scale_in_outlook'], 1)
+        self.assertEqual(d['max_kp_in_outlook'], 5.0)
+
+    def test_cached_alert_feed_cannot_claim_current_warning(self):
+        sources = {
+            'swpc/three_day': {'ok': True,
+                'response': 'The greatest expected 3 hr Kp for Nov 14-Nov 16 2026 is 3.33.'},
+            'swpc/alerts': {'ok': True, 'fetched_at_utc': '2026-11-13T12:00:00+00:00',
+                'response': [{'product_id': 'K05W', 'issue_datetime': '2026-11-13 11:00:00',
+                    'message': 'WARNING: Geomagnetic K-index of 5 expected\n'
+                               'Valid From: 2026 Nov 13 1100 UTC\n'
+                               'Valid To: 2026 Nov 15 2300 UTC\n'
+                               'NOAA Scale: G1 - Minor'}]},
+        }
+        d = parse_space_weather(sources, as_of='2026-11-14T20:00:00+00:00')
+        self.assertEqual(d['alert_feed_status'], 'stale')
+        self.assertEqual(d['warning_or_alert_ids'], [])
+        self.assertEqual(d['recent_alert_scales'], {})
+        self.assertFalse(d['extreme'])
+
     def test_outdated_swpc_forecast_is_unverified(self):
         src = {'swpc/three_day': {
             'ok': True, 'issued_at_utc': '2026-11-01T12:30:00+00:00',
