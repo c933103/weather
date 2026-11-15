@@ -409,6 +409,20 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(items['urban_inundation']['status'], 'ok')
 
 
+    def test_space_item_caution_when_forecast_unverified(self):
+        # PR #1 author update: sources can all be 'ok' while the SWPC
+        # forecast text is unparsable; validation must not say 'ok'.
+        calculated = {'cities': {}, 'cyclone_watch': {'systems': [], 'track_checks': {}},
+                      'space_weather': {'sources_ok': {'swpc/alerts': True},
+                                        'geomagnetic_forecast_status': 'unverified'},
+                      'target_date_jst': '2026-01-15'}
+        raw = {'cities': {}, 'sources': {}, 'quality': {'state': 'complete', 'reasons': []}}
+        got = build_validation(raw, calculated)
+        item = got['hazards']['space_weather']
+        self.assertEqual(item['status'], 'caution')
+        self.assertIn('unverified', item['detail'])
+
+
 class ChartGeometryTests(unittest.TestCase):
     def test_night_low_is_the_noon_to_noon_minimum(self):
         tz = dt.timezone(dt.timedelta(hours=9))

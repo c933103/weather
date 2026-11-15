@@ -122,9 +122,12 @@ def build_validation(raw, calculated):
         cyclone = _item('missing', 'no independent-model track check retrieved for an active system')
     space = calculated.get('space_weather') or {}
     ok_flags = space.get('sources_ok') or {}
-    space_item = _item('ok', 'SWPC and NICT sources current; R/S/G scales are reported as distinct quantities') \
-        if all(v for v in ok_flags.values()) else \
-        _item('caution', f'some space-weather sources failed: {ok_flags}')
+    if space.get('geomagnetic_forecast_status') == 'unverified':
+        space_item = _item('caution', 'SWPC sources retrieved but the 3-day geomagnetic forecast could not be parsed; the G-scale forecast is unverified, not clear')
+    else:
+        space_item = _item('ok', 'SWPC and NICT sources current; R/S/G scales are reported as distinct quantities') \
+            if all(v for v in ok_flags.values()) else \
+            _item('caution', f'some space-weather sources failed: {ok_flags}')
     new_failures = sorted(
         name for name, source in (raw.get('sources') or {}).items()
         if isinstance(source, dict) and source.get('ok') is False

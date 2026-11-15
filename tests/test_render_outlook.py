@@ -169,6 +169,21 @@ class RenderOutlookTests(unittest.TestCase):
         self.assertIn('| 宇宙天気 | 特記なし | Kp最大 2 |', t4)
 
 
+    def test_table4_unverified_space_forecast_is_not_tokki_nashi(self):
+        # Regression (PR #1 author update): the digest marks an
+        # unparsable SWPC forecast geomagnetic_forecast_status=
+        # 'unverified'; the rendered row must say so, not 特記なし.
+        calc = calculated()
+        calc['space_weather'] = {'extreme': False, 'max_kp_in_outlook': 2.0,
+                                 'geomagnetic_forecast_status': 'unverified'}
+        _t3, t4 = render_outlook(raw(), calc)
+        self.assertIn('| 宇宙天気 | 地磁気予報は未検証 |', t4)
+        # A parsed no-storm forecast still renders as 特記なし.
+        calc['space_weather'] = {'extreme': False, 'max_kp_in_outlook': 2.0,
+                                 'geomagnetic_forecast_status': 'no_storm_forecast'}
+        _t3, t4 = render_outlook(raw(), calc)
+        self.assertIn('| 宇宙天気 | 特記なし | Kp最大 2 |', t4)
+
     def test_table4_etc_reads_the_widened_grids(self):
         calc = calculated()
         calc['regional_digest']['east_china_sea'] = {

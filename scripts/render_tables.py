@@ -766,6 +766,12 @@ def _space_analysis(sw):
         parts.append(f"地磁気嵐 G{scales['geomagnetic_G']}級")
     elif sw.get('max_g_scale_in_outlook') is not None:
         parts.append(f"地磁気嵐 G{sw['max_g_scale_in_outlook']}級")
+    elif sw.get('geomagnetic_forecast_status') == 'unverified':
+        # The digest marks an unparsable SWPC forecast 'unverified'
+        # (PR #1, head commit). Without this branch the row collapsed
+        # to 特記なし — presenting an unparsed forecast as clear
+        # weather, the exact failure that commit set out to remove.
+        parts.append('地磁気予報は未検証')
     if scales.get('radiation_storm_S') is not None:
         parts.append(f"放射線嵐 S{scales['radiation_storm_S']}級")
     if scales.get('radio_blackout_R') is not None:

@@ -25,6 +25,12 @@ on:
   push:
     branches: [main]
     paths: ['scripts/**', 'tests/**', 'requirements-*.txt', '.github/workflows/collect.yml']
+  # Pull requests run ONLY the pr_tests job below. The collect job
+  # collects live data and publishes with contents: write, so it must
+  # never run from a pull request; dispatch_guard and collect are both
+  # gated to non-pull_request events.
+  pull_request:
+    paths: ['scripts/**', 'tests/**', 'requirements-*.txt', '.github/workflows/collect.yml']
 
 permissions:
   contents: write
@@ -36,6 +42,7 @@ concurrency:
 
 jobs:
   dispatch_guard:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -98,9 +105,38 @@ jobs:
               out.write(f'proceed={proceed}\n')
           print(f'proceed={proceed}')
           PY
+  pr_tests:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    concurrency:
+      group: east-asia-weather-pr-tests-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install calculation dependencies used by the tests
+        run: python3 -m pip install -r requirements-collection.txt -r requirements-compute.txt -r requirements-chart.txt
+      - name: Set up R for the chart renderer smoke test
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4'
+          use-public-rspm: true
+      - name: Install R chart packages
+        run: |
+          Rscript -e 'install.packages(c("ggplot2", "jsonlite", "ragg", "svglite", "png"), repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/noble/latest"))' \
+          || Rscript -e 'install.packages(c("ggplot2", "jsonlite", "ragg", "svglite", "png"), repos = "https://cloud.r-project.org")'
+      - name: Install Japanese and weather-symbol fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji
+      - name: Run the full test suite
+        run: python3 -m unittest discover -s tests -v
   collect:
     needs: dispatch_guard
-    if: needs.dispatch_guard.outputs.proceed == 'true'
+    if: github.event_name != 'pull_request' && needs.dispatch_guard.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
