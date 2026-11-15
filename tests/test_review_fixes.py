@@ -416,7 +416,8 @@ class ValidationTests(unittest.TestCase):
         calculated = {'cities': {}, 'cyclone_watch': {'systems': [], 'track_checks': {}},
                       'space_weather': {'sources_ok': {'swpc/alerts': True},
                                         'geomagnetic_forecast_status': 'no_storm_forecast',
-                                        'alert_feed_status': 'stale'},
+                                        'alert_feed_status': 'stale',
+                                        'alerts_count': 1},
                       'target_date_jst': '2026-11-15'}
         raw = {'cities': {}, 'sources': {},
                'quality': {'state': 'complete', 'reasons': []}}
