@@ -112,12 +112,15 @@ def build_validation(raw, calculated):
     assessments = [v.get('assessment') or {} for v in (watch.get('track_checks') or {}).values()]
     retrieved = [a for a in assessments if a.get('retrieved')]
     consistent = [a for a in retrieved if a.get('agreement') == 'consistent_with']
+    screened = [a for a in retrieved if a.get('centre_identified')]
     if not systems:
         cyclone = _item('ok', 'no active systems in the ABPW advisory; verification rows still apply to the next system')
+    elif screened:
+        cyclone = _item('caution', 'IFS pressure and 10-m wind yield JTWC-guided local centre candidates; basin-wide identification and EC46 ensemble track spread are still NOT verified')
     elif consistent:
-        cyclone = _item('ok', 'independent-model samples retrieved and coherent with the warning positions; centres are NOT identified from point samples, so the track is never called confirmed')
+        cyclone = _item('caution', 'independent-model pressure samples are coherent with JTWC positions but do not identify model cyclone centres')
     elif retrieved:
-        cyclone = _item('caution', 'independent-model samples retrieved but inconclusive against the warning positions')
+        cyclone = _item('caution', 'independent-model samples retrieved but no model centre/track identification is confirmed')
     else:
         cyclone = _item('missing', 'no independent-model track check retrieved for an active system')
     space = calculated.get('space_weather') or {}

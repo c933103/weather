@@ -425,33 +425,55 @@ def ecmwf_opendata_track_check(track, now):
             index_cache[stamp] = entries
         entries = index_cache[stamp]
         sample = {**point, 'run_utc': run.isoformat(), 'step_h': step,
-                  'ecmwf_pressure_msl_hpa': None, 'ecmwf_wind_10m_kt': None}
+                  'ecmwf_pressure_msl_hpa': None, 'ecmwf_wind_10m_kt': None,
+                  'model_centre_candidate': {'status': 'not_assessed'}}
         try:
             msl = entries.get('msl')
-            if msl:
-                value = _grib_nearest(_range_get(base + stamp, msl['_offset'], msl['_length']),
-                                      point['latitude'], point['longitude'])
+            msl_data = (_range_get(base + stamp, msl['_offset'], msl['_length'])
+                        if msl else None)
+            if msl_data is not None:
+                value = _grib_nearest(msl_data, point['latitude'], point['longitude'])
                 if value is not None:
                     sample['ecmwf_pressure_msl_hpa'] = round(value / 100.0, 1)
             u_entry, v_entry = entries.get('10u'), entries.get('10v')
-            if u_entry and v_entry:
-                u = _grib_nearest(_range_get(base + stamp, u_entry['_offset'], u_entry['_length']),
-                                  point['latitude'], point['longitude'])
-                v = _grib_nearest(_range_get(base + stamp, v_entry['_offset'], v_entry['_length']),
-                                  point['latitude'], point['longitude'])
+            u_data = (_range_get(base + stamp, u_entry['_offset'], u_entry['_length'])
+                      if u_entry else None)
+            v_data = (_range_get(base + stamp, v_entry['_offset'], v_entry['_length'])
+                      if v_entry else None)
+            if u_data is not None and v_data is not None:
+                u = _grib_nearest(u_data, point['latitude'], point['longitude'])
+                v = _grib_nearest(v_data, point['latitude'], point['longitude'])
                 if u is not None and v is not None:
                     sample['ecmwf_wind_10m_kt'] = round(math.hypot(u, v) * 1.94384, 1)
-        except Exception:
-            pass
+            # Search the neighbouring deterministic IFS pressure grid and
+            # check for cyclonic wind rotation. Do not equate a JTWC-point
+            # sample with an independently identified model centre.
+            aligned_hours = abs((run + dt.timedelta(hours=step) - valid).total_seconds()) / 3600.0
+            if aligned_hours > 1.6:
+                sample['model_centre_candidate'] = {'status': 'forecast_time_mismatch',
+                                                    'time_error_hours': round(aligned_hours, 2)}
+            elif msl_data is not None and u_data is not None and v_data is not None:
+                try:
+                    from cyclone_centres import screen_grib_centre
+                    sample['model_centre_candidate'] = screen_grib_centre(
+                        msl_data, u_data, v_data, point['latitude'], point['longitude'])
+                except Exception as exc:
+                    sample['model_centre_candidate'] = {
+                        'status': 'screening_exception', 'error': str(exc)[:200]}
+            else:
+                sample['model_centre_candidate'] = {'status': 'grib_field_missing'}
+        except Exception as exc:
+            sample['model_centre_candidate'] = {
+                'status': 'sampling_exception', 'error': str(exc)[:200]}
         samples.append(sample)
     ok = any(s['ecmwf_pressure_msl_hpa'] is not None for s in samples)
     return {'ok': ok, 'http_status': 200 if ok else None, 'fetched_at_utc': iso_now(),
             'url': base,
             'response': {'model': 'ecmwf_ifs_open_data_0p25', 'samples': samples,
-                         'method': 'ECMWF open-data IFS (0.25°) MSLP and 10 m wind sampled at the '
-                                   'JTWC warning-track positions via per-step index byte ranges; '
-                                   'the in-workflow alternative when the OpenCharts cyclone '
-                                   'product is unavailable.'} if samples else None,
+                         'method': 'ECMWF open-data deterministic IFS 0.25-degree MSLP/10-m wind '
+                                   'at JTWC points, plus a JTWC-guided five-degree neighbourhood '
+                                   'pressure-minimum and wind-rotation screen. This does NOT '
+                                   'identify a basin-wide or EC46 ensemble cyclone track.'} if samples else None,
             'error': None if ok else {'code': 'OPEN_DATA_UNAVAILABLE',
                                       'message': 'no MSLP sample could be decoded from ECMWF open data'}}
 

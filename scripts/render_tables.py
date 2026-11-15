@@ -824,6 +824,10 @@ def _ecmwf_analysis(cw):
         return 'ECMWFサイクロンプロダクトを取得し進路と照合'
     checks = (cw or {}).get('track_checks') or {}
     assessments = [(v or {}).get('assessment') or {} for v in checks.values()]
+    if any(a.get('centre_identified') for a in assessments):
+        return ('IFS格子の局所気圧極小と低層風から中心候補を抽出。'
+                'JTWC位置に誘導された探索であり、EC46アンサンブル進路・'
+                '流域全体の独立追跡は未検証')
     if any(a.get('agreement') == 'consistent_with' for a in assessments):
         return ('ECMWF製品は取得不可。独立モデルサンプルは警報位置と整合'
                 '（中心同定ではなく整合性確認）')
@@ -851,7 +855,19 @@ def _ecmwf_values(cw):
             for v in checks.values()]
     mins = [m for m in mins if m is not None]
     if mins:
-        head += f"｜サンプル点圧 最小{fmt(min(mins), 0)}hPa・中心同定なし"
+        head += f"｜サンプル点圧 最小{fmt(min(mins), 0)}hPa"
+    centred = [a for a in ((v or {}).get('assessment') or {} for v in checks.values())
+               if a.get('centre_identified')]
+    if centred:
+        count = sum(a.get('centre_count') or 0 for a in centred)
+        gaps = [a.get('position_difference_km') for a in centred
+                if a.get('position_difference_km') is not None]
+        head += f"｜IFS局所中心候補{count}点"
+        if gaps:
+            head += f"・JTWC位置差中央値{fmt(min(gaps), 1)}km"
+        head += '（限定探索・EC46進路未検証）'
+    elif mins:
+        head += '・中心候補未確認'
     return head
 
 
