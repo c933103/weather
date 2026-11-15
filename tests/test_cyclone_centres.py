@@ -102,7 +102,7 @@ class TrackCentreAssessmentTests(unittest.TestCase):
         self.assertIn('EC46アンサンブル進路', _ecmwf_analysis(cw))
         values = _ecmwf_values(cw)
         self.assertIn('IFS局所中心候補2点', values)
-        self.assertIn('103km', values)
+        self.assertIn('102.5km', values)
         self.assertIn('EC46進路未検証', values)
 
     def test_validation_caution_despite_guided_ifs_centres(self):
