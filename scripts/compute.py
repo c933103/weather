@@ -162,17 +162,26 @@ def parse_space_weather(sources, as_of=None):
 
     current_three = timely(three_source, three_day)
     current_geomag = timely(geomag_source, geomag)
+    three_issue = issue_time(three_source, three_day)
+    geomag_issue = issue_time(geomag_source, geomag)
 
-    # Prefer the primary, current SWPC three-day forecast. A geomagnetic
-    # bulletin may be older and contain a superseded projected Kp value.
-    forecast_text = three_day if current_three else geomag if current_geomag else ''
-    forecast_source = 'swpc/three_day' if current_three else 'swpc/geomag' if current_geomag else None
+    # Use the most recently ISSUED applicable bulletin when both issue
+    # times are known. Undated ancillary text cannot supersede a dated
+    # current 3-day forecast.
+    select_geomag = current_geomag and (
+        not current_three or
+        (geomag_issue is not None and three_issue is not None
+         and geomag_issue > three_issue))
+    forecast_text = geomag if select_geomag else three_day if current_three else ''
+    forecast_source = ('swpc/geomag' if select_geomag else
+                       'swpc/three_day' if current_three else None)
+    forecast_kp_values = _kp_values(forecast_text)
     m = re.search(r'greatest expected 3 hr Kp.*?is\s+([0-9]+(?:\.[0-9]+)?)',
                   forecast_text, re.I | re.S)
-    if m:
-        expected_kp = float(m.group(1))
+    if m or (select_geomag and forecast_kp_values):
+        expected_kp = float(m.group(1)) if m else max(forecast_kp_values)
         forecast_g = min(5, int(expected_kp) - 4) if expected_kp >= 5 else None
-        forecast_basis = 'SWPC 3-day greatest expected Kp'
+        forecast_basis = 'SWPC greatest expected Kp' if m else 'SWPC geomagnetic hourly Kp forecast'
         forecast_status = 'storm_possible' if forecast_g else 'no_storm_forecast'
     elif re.search(r'\bno\s+G1\b', forecast_text, re.I):
         forecast_g = None
@@ -205,6 +214,20 @@ def parse_space_weather(sources, as_of=None):
         except ValueError:
             return None
 
+    alert_fetch_time = None
+    if alerts_source.get('fetched_at_utc'):
+        try:
+            alert_fetch_time = parse_time(alerts_source['fetched_at_utc'])
+        except (ValueError, TypeError, OverflowError):
+            pass
+    # A downloaded historical alert feed can remain valid with zero recent
+    # alerts, but a CACHED response older than three hours is not a current
+    # alert check. Unknown fetch time stays explicitly unverified.
+    feed_current = (alert_fetch_time is not None and
+                    dt.timedelta(minutes=-5) <= as_of - alert_fetch_time <=
+                    dt.timedelta(hours=3))
+    feed_status = ('current' if feed_current else
+                   'stale' if alert_fetch_time is not None else 'unverified')
     issued_alerts = []
     historical_ids = []
     for entry in alerts:
@@ -236,7 +259,11 @@ def parse_space_weather(sources, as_of=None):
         latest_by_id[pid] = {'issued': issued, 'message': msg, 'valid': valid,
                              'from': start, 'until': stop}
 
-    active = sorted(((pid, detail) for pid, detail in latest_by_id.items() if detail['valid']),
+    # When collection metadata is absent (older test fixtures), evaluate
+    # intervals but retain unverified provenance. An explicitly stale feed
+    # can never claim active warnings.
+    active = sorted(((pid, detail) for pid, detail in latest_by_id.items()
+                     if detail['valid'] and feed_status != 'stale'),
                     key=lambda item: item[1]['issued'], reverse=True)
     active_ids = [pid for pid, _ in active]
     active_scales = {}
@@ -249,6 +276,8 @@ def parse_space_weather(sources, as_of=None):
     # current collection/report time, not the newest (possibly stale) alert.
     recent_scales = {}
     for issued, _, msg in issued_alerts:
+        if feed_status == 'stale':
+            continue
         if not dt.timedelta(0) <= as_of - issued <= dt.timedelta(hours=72):
             continue
         for line in msg.splitlines():
@@ -258,7 +287,7 @@ def parse_space_weather(sources, as_of=None):
                 for number in re.findall(rf'\b{letter}([1-5])\b(?!-)', line):
                     recent_scales[letter] = max(recent_scales.get(letter, 0), int(number))
 
-    kp_values = _kp_values(forecast_text)
+    kp_values = forecast_kp_values
     cme_arrivals = []
     for line in forecast_text.splitlines():
         low = line.lower()
@@ -280,6 +309,7 @@ def parse_space_weather(sources, as_of=None):
                        'geomagnetic_G': forecast_g,
                        'basis': forecast_basis + '; active warnings checked by validity window'},
             'recent_alert_scales': recent_scales,
+            'alert_feed_status': feed_status,
             'geomagnetic_forecast_status': forecast_status,
             'geomagnetic_forecast_source': forecast_source,
             'geomagnetic_issue_utc': (issue_time(
