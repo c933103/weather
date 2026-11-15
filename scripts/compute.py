@@ -1012,32 +1012,63 @@ def regional_digest(raw):
 
 
 def _track_assessment(samples, pressure_key):
-    """Structured verification level for one model's track check.
+    """State exactly which model-track verification levels are evidenced.
 
-    The samples are single-point MSLP/wind values AT the JTWC forecast
-    positions: they can show the model's field is coherent with the
-    warning (a deep low at the warned positions), but they cannot locate
-    a model centre, so no position difference is ever computed and
-    'consistent_with' never means 'confirmed' (review fix, 2026-11-08).
+    GFS/IFS samples at JTWC points are only pressure-coherence checks.
+    The IFS neighbourhood screen may identify cyclonic pressure-low
+    candidates, but its search is ANCHORED to JTWC positions. Even two
+    candidates are not blind basin-wide tracking or EC46 ensemble tracks.
     """
     if not isinstance(samples, list) or not samples:
-        return {'retrieved': False, 'agreement': 'not_assessed'}
-    pressures = [s.get(pressure_key) for s in samples
-                 if isinstance(s, dict) and s.get(pressure_key) is not None]
+        return {'retrieved': False, 'agreement': 'not_assessed',
+                'centre_identified': False, 'track_temporal_agreement': 'not_assessed'}
+    pressures = [s.get(pressure_key) for s in samples if isinstance(s, dict)
+                 and s.get(pressure_key) is not None]
+    result = {'retrieved': bool(pressures),
+              'samples': len(samples), 'samples_with_pressure': len(pressures),
+              'centre_identified': False, 'position_difference_km': None,
+              'track_temporal_agreement': 'not_assessed',
+              'ensemble_spread_verified': False,
+              'search_independence': 'JTWC-guided local search, not independent basin-wide identification',
+              'grid_resolution': 'IFS 0.25 degree (28 km nominal); cannot resolve all TC cores'}
     if not pressures:
-        return {'retrieved': True, 'samples': len(samples), 'samples_with_pressure': 0,
-                'agreement': 'inconclusive'}
+        return {**result, 'agreement': 'inconclusive'}
     frac = sum(1 for v in pressures if v <= 1005) / len(pressures)
-    return {'retrieved': True, 'samples': len(samples),
-            'samples_with_pressure': len(pressures),
-            'point_pressure_min_hpa': round(min(pressures), 1),
-            'point_pressure_median_hpa': round(statistics.median(pressures), 1),
-            'fraction_points_at_or_below_1005hpa': round(frac, 2),
-            'centre_identified': False,
-            'centre_identification_basis': 'single-point samples at the JTWC positions cannot locate a model centre',
-            'position_difference_km': None,
-            'agreement': 'consistent_with' if (min(pressures) <= 1000 and frac >= 0.5) else 'inconclusive',
-            'grid_resolution': '0.25 degrees (about 28 km): adequate for a coherence check against a named warning area, not for centre fixing'}
+    result.update(point_pressure_min_hpa=round(min(pressures), 1),
+                  point_pressure_median_hpa=round(statistics.median(pressures), 1),
+                  fraction_points_at_or_below_1005hpa=round(frac, 2))
+    screened = []
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        centre = sample.get('model_centre_candidate') or {}
+        if centre.get('status') != 'circulation_supported' or not centre.get('centre_identified'):
+            continue
+        if centre.get('distance_to_jtwc_km') is None:
+            continue
+        screened.append({
+            'valid_utc': sample.get('valid_utc'),
+            'latitude': centre.get('latitude'),
+            'longitude': centre.get('longitude'),
+            'minimum_pressure_hpa': centre.get('minimum_pressure_hpa'),
+            'distance_to_jtwc_km': centre.get('distance_to_jtwc_km'),
+            'radial_sectors': centre.get('ring_supported_sectors')})
+    if screened:
+        distances = [x['distance_to_jtwc_km'] for x in screened]
+        result.update(centre_identified=True,
+                      centre_identification_basis='local IFS pressure minimum with 10m cyclonic rotation; JTWC-guided search',
+                      centre_candidates=screened,
+                      centre_count=len(screened),
+                      position_difference_km=round(statistics.median(distances), 1),
+                      track_temporal_agreement=('two_or_more_guided_candidates'
+                           if len(screened) >= 2 else 'single_guided_candidate'),
+                      agreement='centre_candidates_compared')
+    else:
+        result.update(centre_identification_basis=
+                      'No independent IFS pressure-minimum + cyclonic-wind candidate established',
+                      agreement='consistent_with' if min(pressures) <= 1000 and frac >= 0.5
+                      else 'inconclusive')
+    return result
 
 
 def compute_bundle(raw):
