@@ -145,9 +145,11 @@ def parse_space_weather(sources):
         expected_kp = float(m.group(1))
         forecast_g = min(5, int(expected_kp) - 4) if expected_kp >= 5 else None
         forecast_basis = 'SWPC 3-day greatest expected Kp'
+        forecast_status = 'storm_possible' if forecast_g else 'no_storm_forecast'
     elif re.search(r'\bno\s+G1\b', three_day, re.I):
         forecast_g = None
         forecast_basis = 'SWPC 3-day expressly forecasts no G1 or greater'
+        forecast_status = 'no_storm_forecast'
     else:
         # Older/test products sometimes provide a plain positive G-scale
         # statement without a greatest-expected-Kp sentence. Ignore
@@ -159,6 +161,7 @@ def parse_space_weather(sources):
             positives.extend(int(x) for x in re.findall(r'\bG([1-5])\b', line))
         forecast_g = max(positives) if positives else None
         forecast_basis = 'positive G-scale statements (no explicit 3-day Kp)'
+        forecast_status = 'storm_possible' if forecast_g else 'unverified'
 
     def _alert_scales():
         """R/S/G scales from ISSUED alerts, freshness-windowed.
@@ -219,7 +222,7 @@ def parse_space_weather(sources):
                        'geomagnetic_G': forecast_g,
                        'basis': forecast_basis + '; recent alert history is separate'},
             'recent_alert_scales': alert_scales,
-            'geomagnetic_forecast_status': 'storm_possible' if forecast_g else 'no_storm_forecast' if three_day else 'unverified',
+            'geomagnetic_forecast_status': forecast_status,
             'cme_arrivals': cme_arrivals[:4],
             'max_g_scale_in_outlook': max_g,
             'max_kp_in_outlook': max(kp_values) if kp_values else None,
