@@ -118,115 +118,178 @@ def _nict_digest(sources):
             'largest_flare_class': f'{largest[0]}{largest[1]:g}' if largest else None}
 
 
-def parse_space_weather(sources):
-    """Digest of the NOAA SWPC space-weather products in the official bundle.
+def parse_space_weather(sources, as_of=None):
+    """Separate SWPC's current 3-day forecast from issued alert history.
 
-    Keep the 3-day GEOMAGNETIC FORECAST distinct from historical issued
-    alert messages. A literal search for 'G1' also matches the authoritative
-    phrase 'No G1 ... storms are expected', creating a false current storm.
+    The alert API retains old WARN/ALT products. An alert's existence is
+    not evidence of a *currently valid* warning. SWPC forecasts also use
+    negations such as "No G1 ... expected", which must not yield G1.
     """
-    alerts = sources.get('swpc/alerts', {}).get('response')
-    product_ids = []
-    if isinstance(alerts, list):
-        product_ids = [a.get('product_id') for a in alerts if isinstance(a, dict)]
-    text = ''
-    for key in ('swpc/three_day', 'swpc/geomag'):
-        value = sources.get(key, {}).get('response')
-        if isinstance(value, str):
-            text += value + '\n'
-    # The explicit greatest EXPECTED Kp in the current 3-day product is
-    # authoritative for the geomagnetic forecast, not old alerts or a
-    # historical G1 mention, and especially not 'No G1 ... expected'.
-    three_day = sources.get('swpc/three_day', {}).get('response')
+    as_of = parse_time(as_of) if as_of is not None else dt.datetime.now(dt.timezone.utc)
+    alerts_source = sources.get('swpc/alerts') or {}
+    alerts = alerts_source.get('response')
+    alerts = alerts if isinstance(alerts, list) else []
+    product_ids = [a.get('product_id') for a in alerts if isinstance(a, dict)]
+    three_source = sources.get('swpc/three_day') or {}
+    geomag_source = sources.get('swpc/geomag') or {}
+    three_day = three_source.get('response')
     three_day = three_day if isinstance(three_day, str) else ''
+    geomag = geomag_source.get('response')
+    geomag = geomag if isinstance(geomag, str) else ''
+
+    def issue_time(source, bulletin):
+        """Prefer parsed collector metadata, otherwise the product's header."""
+        if source.get('issued_at_utc'):
+            try:
+                return parse_time(source['issued_at_utc'])
+            except (ValueError, TypeError, OverflowError):
+                pass
+        m = re.search(r'(?im)^:Issued:\s*(\d{4}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{4})\s+UTC', bulletin)
+        if m:
+            try:
+                return dt.datetime.strptime(m.group(1), '%Y %b %d %H%M').replace(tzinfo=dt.timezone.utc)
+            except ValueError:
+                pass
+        return None
+
+    def timely(source, bulletin):
+        issued = issue_time(source, bulletin)
+        # No known issue date can still occur in older tests and products.
+        # Explicitly stale/future-dated products are NEVER today's forecast.
+        if issued is None:
+            return bool(bulletin)
+        return dt.timedelta(minutes=-5) <= as_of - issued <= dt.timedelta(hours=48)
+
+    current_three = timely(three_source, three_day)
+    current_geomag = timely(geomag_source, geomag)
+
+    # Prefer the primary, current SWPC three-day forecast. A geomagnetic
+    # bulletin may be older and contain a superseded projected Kp value.
+    forecast_text = three_day if current_three else geomag if current_geomag else ''
+    forecast_source = 'swpc/three_day' if current_three else 'swpc/geomag' if current_geomag else None
     m = re.search(r'greatest expected 3 hr Kp.*?is\s+([0-9]+(?:\.[0-9]+)?)',
-                  three_day, re.I | re.S)
+                  forecast_text, re.I | re.S)
     if m:
         expected_kp = float(m.group(1))
         forecast_g = min(5, int(expected_kp) - 4) if expected_kp >= 5 else None
         forecast_basis = 'SWPC 3-day greatest expected Kp'
         forecast_status = 'storm_possible' if forecast_g else 'no_storm_forecast'
-    elif re.search(r'\bno\s+G1\b', three_day, re.I):
+    elif re.search(r'\bno\s+G1\b', forecast_text, re.I):
         forecast_g = None
-        forecast_basis = 'SWPC 3-day expressly forecasts no G1 or greater'
+        forecast_basis = 'SWPC bulletin explicitly forecasts no G1 or greater'
         forecast_status = 'no_storm_forecast'
     else:
-        # Older/test products sometimes provide a plain positive G-scale
-        # statement without a greatest-expected-Kp sentence. Ignore
-        # negations and probability-only mentions.
+        # Fallback only to *positive*, non-negated statements in the selected
+        # current bulletin. Probability-table labels and old bulletins cannot
+        # define the current G-scale forecast.
         positives = []
-        for line in text.splitlines():
+        for line in forecast_text.splitlines():
             if '%' in line or re.search(r'\bno\s+G[1-5]\b', line, re.I):
                 continue
             positives.extend(int(x) for x in re.findall(r'\bG([1-5])\b', line))
         forecast_g = max(positives) if positives else None
-        forecast_basis = 'positive G-scale statements (no explicit 3-day Kp)'
+        forecast_basis = 'positive G-scale forecast text' if forecast_g else 'unverified forecast'
         forecast_status = 'storm_possible' if forecast_g else 'unverified'
 
-    def _alert_scales():
-        """R/S/G scales from ISSUED alerts, freshness-windowed.
+    # Historical observations and currently valid warnings are distinct.
+    # Only a time-bounded WARNING/WATCH overlapping the next 24 hours can
+    # become a current warning. Open-ended or event-only ALERT messages
+    # remain provenance, not a forecast warning.
+    def message_utc(message, label):
+        pattern = rf'(?im)^{re.escape(label)}:\s*(\d{{4}}\s+[A-Za-z]{{3}}\s+\d{{1,2}}\s+\d{{4}})\s+UTC'
+        match = re.search(pattern, message)
+        if not match:
+            return None
+        try:
+            return dt.datetime.strptime(match.group(1), '%Y %b %d %H%M').replace(tzinfo=dt.timezone.utc)
+        except ValueError:
+            return None
 
-        services.swpc.noaa.gov/products/alerts.json carries about a
-        month of messages: a raw scan would report last month's G3 as
-        today's. Only alerts issued within 72 hours before the newest
-        alert count, probability-table lines (with %) are skipped, and
-        range labels (R1-R2) never match. Recent alerts are kept as
-        historical evidence; they do not define the 3-day G forecast.
-        """
-        if not isinstance(alerts, list) or not alerts:
-            return {}
-        stamps = []
-        for a in alerts:
-            if isinstance(a, dict) and a.get('issue_datetime'):
-                try:
-                    stamps.append(parse_time(str(a['issue_datetime']).replace(' ', 'T')))
-                except Exception:
-                    pass
-        if not stamps:
-            return {}
-        newest = max(stamps)
-        out = {}
-        for a in alerts:
-            if not isinstance(a, dict) or not a.get('issue_datetime'):
-                continue
-            try:
-                when = parse_time(str(a['issue_datetime']).replace(' ', 'T'))
-            except Exception:
-                continue
-            if newest - when > dt.timedelta(hours=72):
-                continue
-            for line in str(a.get('message') or '').splitlines():
-                if '%' in line:
-                    continue
-                for letter in 'RSG':
-                    for m in re.findall(rf'\b{letter}([0-5])\b(?!-)', line):
-                        out[letter] = max(out.get(letter, 0), int(m))
-        return out
+    issued_alerts = []
+    historical_ids = []
+    for entry in alerts:
+        if not isinstance(entry, dict):
+            continue
+        pid = str(entry.get('product_id') or '')
+        msg = str(entry.get('message') or '')
+        if re.search(r'\b(?:WARNING|WATCH|ALERT)\b', msg, re.I) and pid and pid not in historical_ids:
+            historical_ids.append(pid)
+        try:
+            issued = parse_time(str(entry.get('issue_datetime')).replace(' ', 'T'))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if issued <= as_of:
+            issued_alerts.append((issued, pid, msg))
+    issued_alerts.sort(key=lambda item: item[0])
 
-    alert_scales = _alert_scales()
+    latest_by_id = {}
+    for issued, pid, msg in issued_alerts:
+        if not pid:
+            continue
+        start = message_utc(msg, 'Valid From') or issued
+        stop = (message_utc(msg, 'Now Valid Until') or message_utc(msg, 'Valid To')
+                or message_utc(msg, 'Valid Until'))
+        is_warning = bool(re.search(r'(?im)^(?:EXTENDED\s+)?(?:WARNING|WATCH):', msg))
+        cancelled = bool(re.search(r'(?im)^(?:CANCEL(?:LED|ED|ATION)?|TERMINATED|EXPIRED)\s+(?:WARNING|WATCH):', msg))
+        valid = bool(is_warning and not cancelled and stop and
+                     start <= as_of + dt.timedelta(hours=24) and stop > as_of)
+        latest_by_id[pid] = {'issued': issued, 'message': msg, 'valid': valid,
+                             'from': start, 'until': stop}
+
+    active = sorted(((pid, detail) for pid, detail in latest_by_id.items() if detail['valid']),
+                    key=lambda item: item[1]['issued'], reverse=True)
+    active_ids = [pid for pid, _ in active]
+    active_scales = {}
+    for _, detail in active:
+        for letter in 'RSG':
+            for number in re.findall(rf'\b{letter}([1-5])\b', detail['message']):
+                active_scales[letter] = max(active_scales.get(letter, 0), int(number))
+
+    # A 72-hour history is useful for context, but the anchor MUST be the
+    # current collection/report time, not the newest (possibly stale) alert.
+    recent_scales = {}
+    for issued, _, msg in issued_alerts:
+        if not dt.timedelta(0) <= as_of - issued <= dt.timedelta(hours=72):
+            continue
+        for line in msg.splitlines():
+            if '%' in line or re.search(r'\bno\s+[RSG][1-5]\b', line, re.I):
+                continue
+            for letter in 'RSG':
+                for number in re.findall(rf'\b{letter}([1-5])\b(?!-)', line):
+                    recent_scales[letter] = max(recent_scales.get(letter, 0), int(number))
+
+    kp_values = _kp_values(forecast_text)
     cme_arrivals = []
-    for line in text.splitlines():
+    for line in forecast_text.splitlines():
         low = line.lower()
         if 'cme' in low and ('arrival' in low or 'arrive' in low or 'impact' in low):
             snippet = ' '.join(line.split())[:160]
             if snippet and snippet not in cme_arrivals:
                 cme_arrivals.append(snippet)
-    kp_values = _kp_values(text)
-    warning_ids = [p for p in product_ids if p and (p.startswith('WAR') or p.startswith('ALT'))]
-    max_g = forecast_g
-    return {'alerts_count': len(product_ids) if isinstance(alerts, list) else None,
+    return {'alerts_count': len(product_ids),
             'alert_product_ids': product_ids,
-            'warning_or_alert_ids': warning_ids,
-            'scales': {'radio_blackout_R': alert_scales.get('R'),
-                       'radiation_storm_S': alert_scales.get('S'),
+            'historical_warning_or_alert_ids': historical_ids,
+            'warning_or_alert_ids': active_ids,
+            'active_warning_intervals': [{
+                'id': pid, 'issued_at_utc': detail['issued'].isoformat(),
+                'valid_from_utc': detail['from'].isoformat(),
+                'valid_until_utc': detail['until'].isoformat()}
+                for pid, detail in active],
+            'scales': {'radio_blackout_R': active_scales.get('R'),
+                       'radiation_storm_S': active_scales.get('S'),
                        'geomagnetic_G': forecast_g,
-                       'basis': forecast_basis + '; recent alert history is separate'},
-            'recent_alert_scales': alert_scales,
+                       'basis': forecast_basis + '; active warnings checked by validity window'},
+            'recent_alert_scales': recent_scales,
             'geomagnetic_forecast_status': forecast_status,
+            'geomagnetic_forecast_source': forecast_source,
+            'geomagnetic_issue_utc': (issue_time(
+                three_source if current_three else geomag_source, forecast_text).isoformat()
+                if forecast_source and issue_time(
+                    three_source if current_three else geomag_source, forecast_text) else None),
             'cme_arrivals': cme_arrivals[:4],
-            'max_g_scale_in_outlook': max_g,
+            'max_g_scale_in_outlook': forecast_g,
             'max_kp_in_outlook': max(kp_values) if kp_values else None,
-            'extreme': bool(warning_ids) or (max_g is not None and max_g >= 2),
+            'extreme': bool(active_ids) or (forecast_g is not None and forecast_g >= 2),
             'nict': _nict_digest(sources),
             'sources_ok': {k: sources.get(k, {}).get('ok') for k in
                            ('swpc/alerts', 'swpc/three_day', 'swpc/geomag',
@@ -1021,7 +1084,7 @@ def compute_bundle(raw):
             'calculation_quality': {'ready': all(checks.values()), 'cities': checks,
                                     'note': 'Calculation success does not resolve missing original report requirements.'},
             'cities': cities, 'cyclone_watch': cyclone_watch,
-            'space_weather': parse_space_weather(sources),
+            'space_weather': parse_space_weather(sources, as_of=raw.get('collection_utc')),
             'regional_digest': regional_digest(raw),
             'chart_confidence': chart_confidence,
             'chart_confidence_aifs': chart_confidence_aifs,
