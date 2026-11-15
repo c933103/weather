@@ -409,6 +409,18 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(items['urban_inundation']['status'], 'ok')
 
 
+    def test_space_item_caution_when_alert_feed_stale(self):
+        calculated = {'cities': {}, 'cyclone_watch': {'systems': [], 'track_checks': {}},
+                      'space_weather': {'sources_ok': {'swpc/alerts': True},
+                                        'geomagnetic_forecast_status': 'no_storm_forecast',
+                                        'alert_feed_status': 'stale'},
+                      'target_date_jst': '2026-11-15'}
+        raw = {'cities': {}, 'sources': {},
+               'quality': {'state': 'complete', 'reasons': []}}
+        item = build_validation(raw, calculated)['hazards']['space_weather']
+        self.assertEqual(item['status'], 'caution')
+        self.assertIn('stale', item['detail'])
+
     def test_space_item_caution_when_forecast_unverified(self):
         # PR #1 author update: sources can all be 'ok' while the SWPC
         # forecast text is unparsable; validation must not say 'ok'.
