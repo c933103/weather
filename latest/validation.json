@@ -1,6 +1,6 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-16T00:16:28.616667+00:00",
+  "generated_at_utc": "2026-11-16T20:02:16.284040+00:00",
   "target_date_jst": "2026-11-17",
   "cities": {
     "Hong Kong": {
@@ -328,6 +328,7 @@
       "Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.",
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
+      "jma/kagawa_warnings: stale official issue timestamp; not current warning evidence",
       "ecmwf/cyclone_product: request failed (404)"
     ],
     "products_invalid": []
@@ -335,7 +336,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 320632 bytes"
+      "detail": "PNG signature ok, 318188 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -343,7 +344,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 299884 bytes"
+      "detail": "PNG signature ok, 304849 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
