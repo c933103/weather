@@ -15,6 +15,7 @@ Cell rules are the cron's settled ones, encoded once here.
 """
 import math
 import re
+import statistics
 from datetime import datetime, timedelta, timezone
 
 CITY_ORDER = [('Hong Kong', '香港'), ('Taipei', '台北'),
@@ -860,11 +861,15 @@ def _ecmwf_values(cw):
                if a.get('centre_identified')]
     if centred:
         count = sum(a.get('centre_count') or 0 for a in centred)
-        gaps = [a.get('position_difference_km') for a in centred
-                if a.get('position_difference_km') is not None]
+        # The median is over ALL candidates of ALL systems: each track
+        # check is per-system, so a min over per-system medians would
+        # report only the best-matching system (Codex review, 2026-11-16).
+        distances = [c.get('distance_to_jtwc_km') for a in centred
+                     for c in (a.get('centre_candidates') or [])
+                     if c.get('distance_to_jtwc_km') is not None]
         head += f"｜IFS局所中心候補{count}点"
-        if gaps:
-            head += f"・JTWC位置差中央値{fmt(min(gaps), 1)}km"
+        if distances:
+            head += f"・JTWC位置差中央値{fmt(statistics.median(distances), 1)}km"
         head += '（限定探索・EC46進路未検証）'
     elif mins:
         head += '・中心候補未確認'
