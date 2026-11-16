@@ -2,13 +2,14 @@
 import math
 from pathlib import Path
 import sys
+import types
 import unittest
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from cyclone_centres import (pressure_minimum_candidate, cyclonic_wind_support,
-                             distance_km)
+                             distance_km, screen_grib_centre)
 from compute import _track_assessment
 from render_tables import _ecmwf_analysis, _ecmwf_values
 from validate import build_validation
@@ -53,6 +54,74 @@ class PressureCentreTests(unittest.TestCase):
 
     def test_dateline_distance_is_short(self):
         self.assertLess(distance_km(20, 179.7, 20, -179.7), 70)
+
+
+class _FakeEcCodes(types.ModuleType):
+    """ecCodes 2.50.0-shaped stand-in: get_data returns a tuple of
+    per-point dict records (the real API shape that broke the first
+    decode), get_array/get_values return ndarrays, find_nearest returns
+    point dicts. Fields are analytic: a closed low at 20 N 140 E with
+    cyclonic winds, tagged by the payload's 3-byte prefix."""
+
+    _LATS, _LONS = np.meshgrid(np.arange(14, 27, 0.25),
+                               np.arange(134, 147, 0.25), indexing='ij')
+
+    def __init__(self):
+        super().__init__('eccodes')
+
+    @staticmethod
+    def _field(tag, lat, lon):
+        if tag == 'MSL':
+            r2 = (lat - 20.0) ** 2 + ((lon - 140.0)
+                                      * math.cos(math.radians(20))) ** 2
+            return 99000.0 + 140.0 * r2
+        if tag == 'U10':
+            return -(lat - 20.0) * 3.0
+        return (lon - 140.0) * 3.0  # V10
+
+    def codes_grib_new_from_file(self, stream):
+        return {'tag': stream.read(3).decode()}
+
+    def codes_release(self, handle):
+        return None
+
+    def codes_grib_get_data(self, handle):
+        lats, lons = self._LATS.ravel(), self._LONS.ravel()
+        vals = self._field(handle['tag'], self._LATS, self._LONS).ravel()
+        return tuple({'lat': float(a), 'lon': float(b), 'value': float(v)}
+                     for a, b, v in zip(lats, lons, vals))
+
+    def codes_grib_get_array(self, handle, key):
+        return (self._LATS if key == 'latitudes' else self._LONS).ravel().copy()
+
+    def codes_grib_get_values(self, handle):
+        return self._field(handle['tag'], self._LATS, self._LONS).ravel().copy()
+
+    def codes_grib_find_nearest(self, handle, lat, lon, npoints=1):
+        return [{'value': float(self._field(handle['tag'], lat, lon)),
+                 'distance': 0.0, 'index': 0}]
+
+
+class GribDecodeTests(unittest.TestCase):
+    def test_screen_grib_centre_with_real_api_shapes(self):
+        # Regression for Codex P1 (2026-11-16): the decode must use the
+        # array API; with get_data's record tuple it would raise
+        # ValueError before any screening happened.
+        fake = _FakeEcCodes()
+        saved = sys.modules.get('eccodes')
+        sys.modules['eccodes'] = fake
+        try:
+            out = screen_grib_centre(b'MSL synthetic', b'U10 synthetic',
+                                     b'V10 synthetic', 20.8, 140.5)
+        finally:
+            if saved is None:
+                sys.modules.pop('eccodes', None)
+            else:
+                sys.modules['eccodes'] = saved
+        self.assertEqual(out['status'], 'circulation_supported')
+        self.assertTrue(out['centre_identified'])
+        self.assertEqual((out['latitude'], out['longitude']), (20.0, 140.0))
+        self.assertFalse(out['ensemble_tracks_verified'])
 
 
 class TrackCentreAssessmentTests(unittest.TestCase):
@@ -104,6 +173,33 @@ class TrackCentreAssessmentTests(unittest.TestCase):
         self.assertIn('IFS局所中心候補2点', values)
         self.assertIn('102.5km', values)
         self.assertIn('EC46進路未検証', values)
+
+    def test_values_median_spans_all_systems_candidates(self):
+        # Two systems with per-system medians 50 km and 250 km: the
+        # rendered figure must be the median over all four candidates
+        # (150 km), not the better system's median (Codex P2, 2026-11-16).
+        def samples(distances):
+            return [{'valid_utc': '2026-11-16T12:00:00+00:00',
+                     'ecmwf_pressure_msl_hpa': 995.0,
+                     'model_centre_candidate': {
+                         'status': 'circulation_supported',
+                         'centre_identified': True, 'latitude': 20.0,
+                         'longitude': 140.0, 'minimum_pressure_hpa': 990.0,
+                         'distance_to_jtwc_km': d,
+                         'ring_supported_sectors': 8}} for d in distances]
+        cw = {'track_checks': {
+            'ecmwf_opendata/cyclone_check_31w': {
+                'ok': True, 'assessment': _track_assessment(
+                    samples([40.0, 60.0]), 'ecmwf_pressure_msl_hpa')},
+            'ecmwf_opendata/cyclone_check_32w': {
+                'ok': True, 'assessment': _track_assessment(
+                    samples([240.0, 260.0]), 'ecmwf_pressure_msl_hpa')}},
+            'ecmwf_cyclone_product': {'ok': False, 'http_status': 404,
+                                      'attempts': [{'base_time': 'test'}]}}
+        values = _ecmwf_values(cw)
+        self.assertIn('IFS局所中心候補4点', values)
+        self.assertIn('・JTWC位置差中央値150km', values)
+        self.assertNotIn('中央値50km', values)
 
     def test_validation_caution_despite_guided_ifs_centres(self):
         assessment = _track_assessment(self._samples(), 'ecmwf_pressure_msl_hpa')

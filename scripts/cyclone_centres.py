@@ -138,7 +138,14 @@ def screen_grib_centre(msl_grib, u10_grib, v10_grib, reference_lat, reference_lo
     is centred on the externally supplied JTWC forecast position.
     """
     def decode_pressure(ec, handle):
-        latitudes, longitudes, values = ec.codes_grib_get_data(handle)
+        # ecCodes 2.50.0 (the pinned version): codes_grib_get_data returns
+        # a tuple of per-point dict records, NOT three arrays — unpacking
+        # it raised ValueError on every real field (Codex P1, 2026-11-16,
+        # verified against the pinned source). The array API returns the
+        # three float64 ndarrays directly.
+        latitudes = ec.codes_grib_get_array(handle, 'latitudes')
+        longitudes = ec.codes_grib_get_array(handle, 'longitudes')
+        values = ec.codes_grib_get_values(handle)
         return pressure_minimum_candidate(latitudes, longitudes, values,
                                           reference_lat, reference_lon)
     evidence = _with_grib(msl_grib, decode_pressure)
