@@ -1,7 +1,7 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-17T20:02:54.405491+00:00",
-  "target_date_jst": "2026-11-18",
+  "generated_at_utc": "2026-11-18T20:02:14.639179+00:00",
+  "target_date_jst": "2026-11-19",
   "cities": {
     "Hong Kong": {
       "temperature": {
@@ -50,7 +50,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "low visibility corroborated by humidity / dew-point spread / low cloud at the same hours"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -120,7 +120,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "low visibility corroborated by humidity / dew-point spread / low cloud at the same hours"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -190,7 +190,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: mist"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -260,7 +260,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "low visibility corroborated by humidity / dew-point spread / low cloud at the same hours"
+        "detail": "classification: mist"
       },
       "frost": {
         "status": "ok",
@@ -328,7 +328,6 @@
       "Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.",
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
-      "jma/kagawa_warnings: stale official issue timestamp; not current warning evidence",
       "ecmwf/cyclone_product: request failed (404)"
     ],
     "products_invalid": []
@@ -336,7 +335,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 303213 bytes"
+      "detail": "PNG signature ok, 308958 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -344,7 +343,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 310030 bytes"
+      "detail": "PNG signature ok, 305999 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
