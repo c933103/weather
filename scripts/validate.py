@@ -83,7 +83,7 @@ def build_validation(raw, calculated):
         items['frost'] = _item('ok', 'IFS ground-surface (skin) temperature; the GFS 0–10 cm soil limb is non-equivalent and contextual only') \
             if _ready(c.get('surface_temperature')) else _item('missing', 'surface temperature not ready')
         coast = c.get('coastal_assessment') or {}
-        if coast.get('exceedance_over_model_tide_m') is not None:
+        if coast.get('exceedance_over_model_tide_m') is not None and coast.get('aligned_hours') == 24:
             items['storm_surge'] = _item('ok', 'STOFS combined level compared with the STOFS model\'s own astronomical tide (same model datum); surge residual reported separately; official tide tables never subtracted')
         elif coast.get('stofs_ready'):
             items['storm_surge'] = _item('caution', 'no same-datum comparison available for this city: surge residual stands alone; any storm-surge flag needs an official product')
@@ -105,6 +105,36 @@ def build_validation(raw, calculated):
             items['pollen'] = _item('missing', 'no pollen block for this city (CAMS pollen is Europe-only: no claim either way)')
         else:
             items['pollen'] = _item('caution', 'pollen state (in season / out of season / not yet published / unavailable) must be read from the source itself; none of these states is a zero')
+        # Official warnings are normalized in GitHub, not inferred from
+        # a prefectural headline at report-delivery time.
+        city_key = (raw_city.get('key') or
+                    {'Taipei': 'taipei', 'Tokyo Minato Ward': 'tokyo_minato',
+                     'Takamatsu': 'takamatsu'}.get(name))
+        official = ((calculated.get('official_hazards') or {}).get('cities') or {}).get(city_key)
+        if isinstance(official, dict):
+            status = official.get('status')
+            if status == 'ready':
+                active = official.get('active') or []
+                items['official_warning'] = _item(
+                    'ok', f"{len(active)} exact-area official alerts; "
+                          "zero is a current warning snapshot, not a 24h safety forecast")
+            else:
+                items['official_warning'] = _item(
+                    'caution' if status in ('caution', 'unassessed', 'stale') else 'missing',
+                    f"municipal warning applicability: {status}; "
+                    f"{official.get('reason', 'not independently validated')}")
+            if city_key == 'taipei':
+                for field, target in (('urban_inundation', 'wra_urban_warning'),
+                                      ('river_level', 'wra_river_warning')):
+                    wra = official.get(field) or {}
+                    code = 'ok' if wra.get('status') == 'ready' else (
+                        'caution' if wra.get('status') in ('caution', 'unassessed') else 'missing')
+                    items[target] = _item(
+                        code, f"WRA {field}: {wra.get('status')}; "
+                              f"{len(wra.get('warnings') or [])} alerts explicitly scoped to Taipei; "
+                              "separate from rainfall and GloFAS point screens")
+        elif city_key in ('taipei', 'tokyo_minato', 'takamatsu'):
+            items['official_warning'] = _item('missing', 'no computed official municipal warning assessment')
         cities[name] = items
 
     watch = calculated.get('cyclone_watch') or {}
@@ -137,11 +167,21 @@ def build_validation(raw, calculated):
         name for name, source in (raw.get('sources') or {}).items()
         if isinstance(source, dict) and source.get('ok') is False
         and name not in STANDING_FAILED_SOURCES)
+    official_block = calculated.get('official_hazards') or {}
+    official_summary = {}
+    for kind, item in (official_block.get('regional') or {}).items():
+        status = item.get('status') if isinstance(item, dict) else None
+        official_summary[kind] = _item(
+            'ok' if status == 'ready' else
+            'caution' if status in ('caution', 'unassessed', 'stale') else 'missing',
+            f"{status}: {item.get('reason', 'exact-area alerts and issue/valid times retained')}"
+            if isinstance(item, dict) else 'missing source assessment')
     return {'schema': 'east_asia_weather_validation_v1',
             'generated_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
             'target_date_jst': calculated.get('target_date_jst'),
             'cities': cities,
-            'hazards': {'cyclone_verification': cyclone, 'space_weather': space_item},
+            'hazards': {'cyclone_verification': cyclone, 'space_weather': space_item,
+                        'official_warnings': official_summary},
             'coverage': {'standing_limitations': STANDING_LIMITATIONS,
                          'new_source_failures': new_failures,
                          'quality_state': (raw.get('quality') or {}).get('state'),

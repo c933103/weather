@@ -201,7 +201,7 @@ def _pressure(digest):
     return f'{fmt(mean)} ({delta:+.1f})'
 
 
-def _tokki_floor(c, digest):
+def _tokki_floor(c, digest, official=None):
     """The mechanical 特記 floor: digest hazard flags + visibility + snow.
 
     The 06:00 run's category-by-category audit adds the remaining limbs
@@ -226,7 +226,27 @@ def _tokki_floor(c, digest):
     snowp = (c.get('snow_probability') or {}).get('percent')
     if (snow is not None and snow >= 0.1) or (snowp is not None and snowp >= 50):
         tokens.append('雪')
-    return '・'.join(tokens) if tokens else '無'
+    # GitHub-normalized official notices are already municipality-scoped.
+    # Raw prefectural XML/KML is never interpreted directly in this renderer.
+    if isinstance(official, dict):
+        for item in official.get('active') or []:
+            title = item.get('name')
+            if title:
+                tokens.append('公式' + str(title).replace('|', '／')[:30])
+        if official.get('status') != 'ready':
+            tokens.append('公式警報一部未検証')
+        if official.get('unknown_area_warnings'):
+            tokens.append('CWA未確定地域あり')
+        for kind, label in (('urban_inundation', '淹水'),
+                            ('river_level', '河川水位')):
+            water = official.get(kind)
+            if isinstance(water, dict):
+                for warning in water.get('warnings') or []:
+                    level = warning.get('level')
+                    tokens.append(f"{label}{level}級警戒" if level else f"{label}警戒・級別未確認")
+                if water.get('status') != 'ready':
+                    tokens.append(f"{label}情報未検証")
+    return '・'.join(dict.fromkeys(tokens)) if tokens else '無'
 
 
 def _tide(c, raw_city):
@@ -297,7 +317,9 @@ def render_tables(raw, calculated):
           row('UV', lambda c, d, r, j: _uv(c)),
           row('気圧', lambda c, d, r, j: _pressure(d)),
           row('潮汐', lambda c, d, r, j: _tide(c, r)),
-          row('特記', lambda c, d, r, j: _tokki_floor(c, d))]
+          row('特記', lambda c, d, r, j: _tokki_floor(
+               c, d, ((calculated.get('official_hazards') or {}).get('cities') or {}).get(
+                   r.get('key'))))]
     return '\n'.join(t1) + '\n', '\n'.join(t2) + '\n'
 
 
