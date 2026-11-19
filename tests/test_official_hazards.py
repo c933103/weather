@@ -48,10 +48,11 @@ class JmaOfficialTests(unittest.TestCase):
         got = parse_jma_xml(source(jma_xml(area='1320100')), '1310300', NOW)
         self.assertEqual(got['status'], 'unassessed')
 
-    def test_stale_xml_does_not_claim_current(self):
+    def test_older_event_issue_preserves_warning_with_caution(self):
         past = jma_xml().replace('2026-11-19T04:58', '2026-11-17T04:58')
         got = parse_jma_xml(source(past), '1310300', NOW)
-        self.assertEqual(got['status'], 'stale')
+        self.assertEqual(got['status'], 'caution')
+        self.assertEqual([x['name'] for x in got['active']], ['強風注意報'])
 
     def test_json_cancellation_does_not_resurrect_old_warning(self):
         recent = {'reportDatetime': '2026-11-19T04:58:00+09:00',
