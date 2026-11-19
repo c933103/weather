@@ -63,6 +63,19 @@ class JmaOfficialTests(unittest.TestCase):
         self.assertEqual(got['active'], [])
         self.assertEqual(got['cancelled'][0]['code'], '15')
 
+    def test_json_per_phenomenon_keeps_earlier_wind_and_later_wave(self):
+        wind = {'reportDatetime': '2026-11-19T04:10:00+09:00',
+                'dataTypeCode': 'VPWW58',
+                'warning': {'class20Items': [{'areaCode': '1310300',
+                   'kinds': [{'code': '15', 'status': '継続'}]}]}}
+        wave = {'reportDatetime': '2026-11-19T04:55:00+09:00',
+                'dataTypeCode': 'VPWW59',
+                'warning': {'class20Items': [{'areaCode': '1310300',
+                   'kinds': [{'code': '16', 'status': '発表'}]}]}}
+        got = parse_jma_json(source([wind, wave]), '1310300', NOW)
+        self.assertEqual(got['status'], 'caution')  # history, not a full snapshot
+        self.assertEqual({x['code'] for x in got['active']}, {'15', '16'})
+
 
 class TaiwanOfficialTests(unittest.TestCase):
     def test_cwa_exact_scope_does_not_include_taipei_via_new_taipei(self):
