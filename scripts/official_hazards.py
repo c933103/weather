@@ -14,10 +14,10 @@ UTC = dt.timezone.utc
 TPE = ZoneInfo("Asia/Taipei")
 JMA_AREAS = {"tokyo_minato": ("tokyo", "1310300"),
              "takamatsu": ("kagawa", "3720100")}
-JMA_NAMES = {"10": "大雨注意報", "12": "大雪注意報", "14": "雷注意報",
-             "15": "強風注意報", "16": "波浪注意報", "17": "融雪注意報",
-             "18": "洪水注意報", "19": "高潮注意報", "29": "洪水警報",
-             "30": "大雨警報"}
+# Codes below are verified against the current municipal warning XML.
+# Unmapped R8 codes are retained as codes, never given a guessed level.
+JMA_NAMES = {"14": "雷注意報", "15": "強風注意報", "16": "波浪注意報"}
+
 TAIWAN_AREAS = ("臺北市", "新北市", "基隆市", "桃園市", "新竹市", "新竹縣",
                 "苗栗縣", "臺中市", "彰化縣", "南投縣", "雲林縣",
                 "嘉義市", "嘉義縣", "臺南市", "高雄市", "屏東縣",
