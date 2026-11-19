@@ -93,42 +93,57 @@ def parse_jma_xml(source, code, as_of):
 
 
 def parse_jma_json(source, code, as_of):
-    """Fallback to a recent municipality-level JSON report, never a region row."""
+    """R8 JSON holds the latest report of EACH warning phenomenon.
+
+    Do not choose the newest report across the whole array: an earlier
+    wave warning can still be active after a later wind report.  For the
+    same warning code choose its most recent status, including releases.
+    """
     result = {"status": "missing", "source": "jma_json",
               "active": [], "cancelled": [], "issued_at_utc": None}
     if not _source_ok(source) or not isinstance(source.get("response"), list):
         return result
-    rows = []
+    latest_by_code = {}
+    report_times = []
     for report in source["response"]:
         if not isinstance(report, dict):
             continue
         stamp = _time(report.get("reportDatetime"))
+        if stamp is None:
+            continue
         for item in (report.get("warning") or {}).get("class20Items", []):
-            if item.get("areaCode") == code and stamp is not None:
-                rows.append((stamp, item))
-    if not rows:
-        return {**result, "status": "unassessed", "reason": "exact municipality absent"}
-    issued = max(s for s, _ in rows)
-    result["issued_at_utc"] = issued.isoformat()
-    if as_of - issued > dt.timedelta(hours=12) or issued > as_of + dt.timedelta(minutes=5):
-        return {**result, "status": "stale", "reason": "fallback issue older than 12h"}
-    # The latest municipal snapshot supersedes the older phenomenon states;
-    # a single older cancellation must never override a newer activation.
-    latest = [i for s, i in rows if s == issued]
-    for item in latest:
-        for kind in item.get("kinds", []):
-            status = kind.get("status") or ""
-            code_value = str(kind.get("code") or "")
-            if status == "発表警報・注意報はなし":
+            if item.get("areaCode") != code:
                 continue
-            entry = {"code": code_value, "name": JMA_NAMES.get(code_value, code_value),
-                     "status": status}
-            if status in ("解除", "無効", "取消"):
-                result["cancelled"].append(entry)
-            else:
-                result["active"].append(entry)
-    result["status"] = "ready"
+            report_times.append(stamp)
+            for kind in item.get("kinds", []):
+                warning_code = str(kind.get("code") or "")
+                if not warning_code or kind.get("status") == "発表警報・注意報はなし":
+                    continue
+                old = latest_by_code.get(warning_code)
+                if old is None or stamp >= old[0]:
+                    latest_by_code[warning_code] = (stamp, kind)
+    if not report_times:
+        return {**result, "status": "unassessed", "reason": "exact municipality absent"}
+    issued = max(report_times)
+    result["issued_at_utc"] = issued.isoformat()
+    if issued > as_of + dt.timedelta(minutes=5):
+        return {**result, "status": "invalid", "reason": "future-dated JMA issue"}
+    # A product array may retain many old observations and cancellations:
+    # don't interpret that as a newly issued all-clear statement.
+    for when, kind in latest_by_code.values():
+        entry = {"code": str(kind.get("code")), "name": JMA_NAMES.get(str(kind.get("code")),
+                  str(kind.get("code"))), "status": kind.get("status")}
+        if when > as_of + dt.timedelta(minutes=5) or as_of - when > dt.timedelta(hours=12):
+            continue  # historical, cannot assert currently active or canceled
+        if entry["status"] in ("解除", "無効", "取消"):
+            result["cancelled"].append(entry)
+        elif entry["status"] in ("発表", "継続"):
+            result["active"].append(entry)
     result["area_code"] = code
+    result["status"] = "caution"
+    result["reason"] = (
+        "R8 JSON is per-phenomenon latest history, not a current full municipal "
+        "snapshot; only recent positive/cancellation codes retained")
     return result
 
 
@@ -313,7 +328,7 @@ def summarize(sources, as_of_utc, window_end_utc):
         if current["status"] == "ready" and fallback["status"] == "ready":
             if _time(fallback["issued_at_utc"]) > _time(current["issued_at_utc"]):
                 current = fallback
-        elif current["status"] != "ready" and fallback["status"] == "ready":
+        elif current["status"] != "ready" and fallback["status"] in ("ready", "caution"):
             current = fallback
         cities[city] = current
     cwa = parse_cwa_api(sources.get("cwa/official_warning_api"), now, end)
