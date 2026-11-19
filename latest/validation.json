@@ -1,7 +1,7 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-18T20:02:14.639179+00:00",
-  "target_date_jst": "2026-11-19",
+  "generated_at_utc": "2026-11-19T00:28:03.906741+00:00",
+  "target_date_jst": "2026-11-20",
   "cities": {
     "Hong Kong": {
       "temperature": {
@@ -141,6 +141,18 @@
       "pollen": {
         "status": "missing",
         "detail": "no pollen block for this city (CAMS pollen is Europe-only: no claim either way)"
+      },
+      "official_warning": {
+        "status": "caution",
+        "detail": "municipal warning applicability: caution; not independently validated"
+      },
+      "wra_urban_warning": {
+        "status": "ok",
+        "detail": "WRA urban_inundation: ready; 0 alerts explicitly scoped to Taipei; separate from rainfall and GloFAS point screens"
+      },
+      "wra_river_warning": {
+        "status": "ok",
+        "detail": "WRA river_level: ready; 0 alerts explicitly scoped to Taipei; separate from rainfall and GloFAS point screens"
       }
     },
     "Tokyo Minato Ward": {
@@ -211,6 +223,10 @@
       "pollen": {
         "status": "caution",
         "detail": "pollen state (in season / out of season / not yet published / unavailable) must be read from the source itself; none of these states is a zero"
+      },
+      "official_warning": {
+        "status": "ok",
+        "detail": "2 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       }
     },
     "Takamatsu": {
@@ -260,7 +276,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: mist"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -281,6 +297,10 @@
       "pollen": {
         "status": "caution",
         "detail": "pollen state (in season / out of season / not yet published / unavailable) must be read from the source itself; none of these states is a zero"
+      },
+      "official_warning": {
+        "status": "ok",
+        "detail": "2 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       }
     }
   },
@@ -292,6 +312,20 @@
     "space_weather": {
       "status": "ok",
       "detail": "SWPC and NICT sources current; R/S/G scales are reported as distinct quantities"
+    },
+    "official_warnings": {
+      "cwa": {
+        "status": "caution",
+        "detail": "caution: some active warnings have missing issue, expiry or exact area"
+      },
+      "wra_urban_inundation": {
+        "status": "ok",
+        "detail": "ready: exact-area alerts and issue/valid times retained"
+      },
+      "wra_river_level": {
+        "status": "ok",
+        "detail": "ready: exact-area alerts and issue/valid times retained"
+      }
     }
   },
   "coverage": {
@@ -321,13 +355,22 @@
         "text": "STOFS levels sit on the NOAA model datum: combined levels are compared only with the STOFS model's own astronomical tide, never with official tide-table datums."
       }
     ],
-    "new_source_failures": [],
+    "new_source_failures": [
+      "taipei/gfs",
+      "taipei/ifs_monsoon",
+      "tokyo_minato/gfs",
+      "tokyo_minato/ifs_long"
+    ],
     "quality_state": "partial",
     "quality_reasons": [
       "GloFAS grids have not been matched to applicable river reaches and flood thresholds.",
       "Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.",
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
+      "taipei/ifs_monsoon: request failed (429)",
+      "taipei/gfs: request failed (429)",
+      "tokyo_minato/ifs_long: request failed (None)",
+      "tokyo_minato/gfs: request failed (None)",
       "ecmwf/cyclone_product: request failed (404)"
     ],
     "products_invalid": []
@@ -335,7 +378,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 308958 bytes"
+      "detail": "PNG signature ok, 300448 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -343,7 +386,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 305999 bytes"
+      "detail": "PNG signature ok, 299317 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
