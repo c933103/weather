@@ -66,13 +66,14 @@ class JmaOfficialTests(unittest.TestCase):
 
 class TaiwanOfficialTests(unittest.TestCase):
     def test_cwa_exact_scope_does_not_include_taipei_via_new_taipei(self):
-        js = r"""var WarnAll = ['W25'];
+        js = r"""var WarnAll = ['W25', 'FIFOWS'];\nvar WarnFIFOWS = ['W25'];
 var WarnContent = {'W25': {'C': {'title': '陸上強風特報',
  'issued': '2026/11/18 22:25', 'validto': '2026/11/19 23:00',
  'content_web': '二、特報區域\n【黃色燈號】\n新北市、桃園市。\n三、注意事項'},
  'E': {'title': 'Strong Wind Advisory'}}};"""
         got = parse_cwa_js(source(js), NOW, END)
         self.assertEqual(got['status'], 'ready')
+        self.assertEqual(len(got['warnings']), 1)  # FIFOWS is a display group, not an alert
         self.assertEqual(got['warnings'][0]['areas'], ['新北市', '桃園市'])
         self.assertFalse(got['warnings'][0]['applies_taipei'])
 
