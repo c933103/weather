@@ -66,7 +66,8 @@ class JmaOfficialTests(unittest.TestCase):
 
 class TaiwanOfficialTests(unittest.TestCase):
     def test_cwa_exact_scope_does_not_include_taipei_via_new_taipei(self):
-        js = r"""var WarnAll = ['W25', 'FIFOWS'];\nvar WarnFIFOWS = ['W25'];
+        js = r"""var WarnAll = ['W25', 'FIFOWS'];
+var WarnFIFOWS = ['W25'];
 var WarnContent = {'W25': {'C': {'title': '陸上強風特報',
  'issued': '2026/11/18 22:25', 'validto': '2026/11/19 23:00',
  'content_web': '二、特報區域\n【黃色燈號】\n新北市、桃園市。\n三、注意事項'},
