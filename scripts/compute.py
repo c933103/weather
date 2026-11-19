@@ -12,6 +12,7 @@ import statistics
 from zoneinfo import ZoneInfo
 
 from collect import CITIES, iso_now, parse_time, numeric
+from official_hazards import summarize as summarize_official_hazards
 
 
 COMPASS16 = ('北', '北北東', '北東', '東北東', '東', '東南東', '南東', '南南東',
@@ -608,15 +609,43 @@ def coastal_assessment(raw_city):
            'combined_water_level': _series_stats(cf.get('time'), cf.get('combined_water_level'))}
     tide = _series_stats(cf.get('time'), cf.get('astronomical_tide'))
     out['stofs_astronomical_tide'] = tide
-    if tide and out['combined_water_level']:
-        out['exceedance_over_model_tide_m'] = round(
-            out['combined_water_level']['maximum'] - tide['maximum'], 3)
-        out['exceedance_basis'] = "same STOFS model datum (combined level vs the model's own astronomical tide)"
+    # Max(combined water level) - max(astronomical tide) compares different
+    # hours and is NOT the maximum same-time model anomaly. Require exactly
+    # 24 unique, consecutive model hours and both fields at each hour.
+    times = cf.get('time') or []
+    combined = cf.get('combined_water_level') or []
+    model_tides = cf.get('astronomical_tide') or []
+    aligned = len(times) == len(combined) == len(model_tides) == 24
+    if aligned:
+        try:
+            stamps = [parse_time(t) for t in times]
+            aligned = len(set(stamps)) == 24 and all(
+                stamps[i] - stamps[i - 1] == dt.timedelta(hours=1)
+                for i in range(1, 24))
+            aligned = aligned and all(
+                isinstance(v, (int, float)) and math.isfinite(v)
+                for values in (combined, model_tides) for v in values)
+        except (TypeError, ValueError):
+            aligned = False
+    if aligned:
+        comparisons = [(round(c - t, 6), stamp.isoformat())
+                       for stamp, c, t in zip(stamps, combined, model_tides)]
+        peak, when = max(comparisons, key=lambda x: x[0])
+        out['exceedance_over_model_tide_m'] = round(peak, 3)
+        out['exceedance_time_utc'] = when
+        out['aligned_hours'] = len(comparisons)
+        out['exceedance_basis'] = (
+            'same STOFS model datum, each combined level minus its own '
+            'astronomical tide at the SAME forecast valid hour; '
+            'maximum of the 24 matched hourly differences')
     else:
         out['exceedance_over_model_tide_m'] = None
-        out['exceedance_basis'] = ('unavailable: no STOFS astronomical-tide series for this city '
-                                   '(Hong Kong comes from the STOFS points file, which carries no tide field); '
-                                   'the surge residual stands alone')
+        out['exceedance_time_utc'] = None
+        out['aligned_hours'] = 0
+        out['exceedance_basis'] = (
+            'unavailable: missing or incomplete same-hour STOFS tide/total '
+            'series (Hong Kong point files do not carry model tide); '
+            'the separately supplied surge residual stands alone')
     official = raw_city.get('astronomical_tide') or {}
     events = list(official.get('events') or [])
     if not events and official.get('time') and official.get('height'):
@@ -1097,6 +1126,17 @@ def compute_bundle(raw):
             v.get('ready') is True for k, v in city.items()
             if isinstance(v, dict) and 'ready' in v and k not in ('fog', 'urban_inundation'))
     sources = raw.get('sources', {})
+    try:
+        official_hazards = summarize_official_hazards(
+            sources, raw.get('collection_utc'), raw.get('window_end_utc'))
+    except Exception as exc:
+        # Official-source parsing must never break the numeric four-city
+        # report.  Missing assessments are surfaced by validation below.
+        official_hazards = {'schema': 'east_asia_official_hazards_v1',
+                            'status': 'missing',
+                            'error': f'{type(exc).__name__}: {exc}',
+                            'cities': {}, 'regional': {}}
+
     ecmwf_probe = sources.get('ecmwf/cyclone_product', {})
     ecmwf_response = ecmwf_probe.get('response')
     if isinstance(ecmwf_response, str):
@@ -1154,6 +1194,7 @@ def compute_bundle(raw):
             'calculation_quality': {'ready': all(checks.values()), 'cities': checks,
                                     'note': 'Calculation success does not resolve missing original report requirements.'},
             'cities': cities, 'cyclone_watch': cyclone_watch,
+            'official_hazards': official_hazards,
             'space_weather': parse_space_weather(sources, as_of=raw.get('collection_utc')),
             'regional_digest': regional_digest(raw),
             'chart_confidence': chart_confidence,
