@@ -580,9 +580,13 @@ def source_freshness(source, now, max_age_hours=36):
         if match:
             issued = dt.datetime.strptime(match[1], '%Y %b %d %H%M').replace(tzinfo=UTC)
         if issued is None:
-            match = re.search(r"['\"]issued['\"]\s*:\s*['\"](\d{4}/\d\d/\d\d \d\d:\d\d)", data)
-            if match:
-                issued = dt.datetime.strptime(match[1], '%Y/%m/%d %H:%M').replace(tzinfo=ZoneInfo('Asia/Taipei')).astimezone(UTC)
+            stamps = re.findall(r"['\"]issued['\"]\s*:\s*['\"](\d{4}/\d\d/\d\d \d\d:\d\d)", data)
+            if stamps:
+                # CWA Warning_Content.js contains multiple active warnings:
+                # the FIRST 'issued' is not necessarily the newest product.
+                issued = max(dt.datetime.strptime(stamp, '%Y/%m/%d %H:%M')
+                             for stamp in stamps).replace(
+                                 tzinfo=ZoneInfo('Asia/Taipei')).astimezone(UTC)
         if issued is None and data.lstrip().startswith('<?xml'):
             try:
                 tree = ET.fromstring(data)
