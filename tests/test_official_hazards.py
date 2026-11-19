@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 
 from official_hazards import (parse_jma_xml, parse_jma_json, parse_cwa_js,
                               parse_wra_kml, summarize)
+from collect import source_freshness
 from compute import coastal_assessment
 from render_tables import _tokki_floor
 
@@ -99,6 +100,13 @@ var WarnContent = {'W26': {'C': {'title': '大雨特報',
         got = parse_cwa_js(source(js), NOW, END)
         self.assertEqual(got['status'], 'caution')
         self.assertIsNone(got['warnings'][0]['applies_taipei'])
+
+    def test_cwa_freshness_uses_latest_not_first_issued(self):
+        js = "var WarnContent = {'W25': {'C': {'issued':'2026/11/18 05:00'}}," \
+             "'W26': {'C': {'issued':'2026/11/19 00:05'}}};"
+        got = source_freshness({'response': js}, NOW)
+        self.assertEqual(got['issued_at_utc'], '2026-11-18T16:05:00+00:00')
+        self.assertEqual(got['freshness']['status'], 'current')
 
     def test_wra_urban_and_river_are_distinct(self):
         none = """<?xml version="1.0"?>
