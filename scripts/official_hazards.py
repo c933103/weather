@@ -60,7 +60,7 @@ def parse_jma_xml(source, code, as_of):
     """Exact municipality, never the prefecture's 'FullStatus: 一部'."""
     result = {"status": "missing", "source": "jma_xml", "active": [],
               "cancelled": [], "issued_at_utc": None}
-    if not _source_ok(source) or not isinstance(source.get("response"), str):
+    if not isinstance(source, dict) or not source.get("ok") or not isinstance(source.get("response"), str):
         return result
     try:
         root = ET.fromstring(source["response"])
@@ -71,8 +71,12 @@ def parse_jma_xml(source, code, as_of):
     if issued is None:
         return {**result, "status": "invalid", "reason": "no issue time"}
     result["issued_at_utc"] = issued.isoformat()
-    if issued > as_of + dt.timedelta(minutes=5) or as_of - issued > dt.timedelta(hours=12):
-        return {**result, "status": "stale", "reason": "warning XML older than 12 h or future-dated"}
+    if issued > as_of + dt.timedelta(minutes=5):
+        return {**result, "status": "invalid", "reason": "future-dated warning issue"}
+    # JMA warnings are event-driven. A live endpoint's older issue time
+    # does NOT automatically cancel an active warning: retain its exact
+    # municipality statuses, but require newer R8 corroboration when old.
+    old_issuance = as_of - issued > dt.timedelta(hours=12)
     if head is not None and head.findtext("./{*}InfoType") in ("取消", "取消し"):
         return {**result, "status": "caution", "reason": "report cancellation; need latest full state"}
     items = [item for item in root.findall(".//{*}Item")
@@ -87,7 +91,9 @@ def parse_jma_xml(source, code, as_of):
                 result["cancelled"].append(entry)
             elif entry["name"] and entry["status"] not in ("発表警報・注意報はなし",):
                 result["active"].append(entry)
-    result["status"] = "ready"
+    result["status"] = "caution" if old_issuance else "ready"
+    if old_issuance:
+        result["reason"] = "old event issuance; downloaded now but corroboration with recent R8 state required"
     result["area_code"] = code
     return result
 
@@ -101,7 +107,7 @@ def parse_jma_json(source, code, as_of):
     """
     result = {"status": "missing", "source": "jma_json",
               "active": [], "cancelled": [], "issued_at_utc": None}
-    if not _source_ok(source) or not isinstance(source.get("response"), list):
+    if not isinstance(source, dict) or not source.get("ok") or not isinstance(source.get("response"), list):
         return result
     latest_by_code = {}
     report_times = []
@@ -133,8 +139,10 @@ def parse_jma_json(source, code, as_of):
     for when, kind in latest_by_code.values():
         entry = {"code": str(kind.get("code")), "name": JMA_NAMES.get(str(kind.get("code")),
                   str(kind.get("code"))), "status": kind.get("status")}
-        if when > as_of + dt.timedelta(minutes=5) or as_of - when > dt.timedelta(hours=12):
-            continue  # historical, cannot assert currently active or canceled
+        if when > as_of + dt.timedelta(minutes=5):
+            continue
+        entry["issue_at_utc"] = when.isoformat()
+        entry["old_issuance"] = as_of - when > dt.timedelta(hours=12)
         if entry["status"] in ("解除", "無効", "取消"):
             result["cancelled"].append(entry)
         elif entry["status"] in ("発表", "継続"):
@@ -143,7 +151,7 @@ def parse_jma_json(source, code, as_of):
     result["status"] = "caution"
     result["reason"] = (
         "R8 JSON is per-phenomenon latest history, not a current full municipal "
-        "snapshot; only recent positive/cancellation codes retained")
+        "snapshot; issue times can be old for ongoing event-driven warnings")
     return result
 
 
@@ -322,14 +330,15 @@ def summarize(sources, as_of_utc, window_end_utc):
     for city, (name, code) in JMA_AREAS.items():
         current = parse_jma_xml(sources.get(f"jma/{name}_warning_xml"), code, now)
         fallback = parse_jma_json(sources.get(f"jma/{name}_warnings"), code, now)
-        # Prefer newest current municipality-level statement, never a stale
-        # XML over newer JSON; a canceled/absent warning is meaningful only
-        # when the source explicitly gives a current city snapshot.
-        if current["status"] == "ready" and fallback["status"] == "ready":
-            if _time(fallback["issued_at_utc"]) > _time(current["issued_at_utc"]):
+        # XML is the full municipal snapshot when recent. A newer R8
+        # per-phenomenon history is preferable to an older XML event,
+        # but remains explicitly labelled caution/incomplete.
+        if fallback["status"] in ("ready", "caution"):
+            x_time = _time(current.get("issued_at_utc"))
+            j_time = _time(fallback.get("issued_at_utc"))
+            if current["status"] not in ("ready", "caution") or (
+                    x_time and j_time and j_time > x_time):
                 current = fallback
-        elif current["status"] != "ready" and fallback["status"] in ("ready", "caution"):
-            current = fallback
         cities[city] = current
     cwa = parse_cwa_api(sources.get("cwa/official_warning_api"), now, end)
     if cwa["status"] != "ready":
