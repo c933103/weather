@@ -188,6 +188,9 @@ def parse_cwa_js(source, as_of, window_end):
     ids, data = _js_value(text, "WarnAll"), _js_value(text, "WarnContent")
     if not isinstance(ids, list) or not isinstance(data, dict):
         return {**out, "status": "invalid", "reason": "CWA warning JS not parseable"}
+    # FIFOWS is the website's display group, not a warning record.  Its
+    # members appear separately as Wxx IDs in both WarnAll and WarnContent.
+    ids = [key for key in ids if key != "FIFOWS"]
     partial = False
     for key in ids:
         rec = data.get(key) or {}
