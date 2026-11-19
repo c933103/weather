@@ -1,6 +1,6 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-19T00:28:03.906741+00:00",
+  "generated_at_utc": "2026-11-19T20:02:40.867295+00:00",
   "target_date_jst": "2026-11-20",
   "cities": {
     "Hong Kong": {
@@ -143,8 +143,8 @@
         "detail": "no pollen block for this city (CAMS pollen is Europe-only: no claim either way)"
       },
       "official_warning": {
-        "status": "caution",
-        "detail": "municipal warning applicability: caution; not independently validated"
+        "status": "ok",
+        "detail": "0 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       },
       "wra_urban_warning": {
         "status": "ok",
@@ -300,7 +300,7 @@
       },
       "official_warning": {
         "status": "ok",
-        "detail": "2 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
+        "detail": "3 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       }
     }
   },
@@ -315,8 +315,8 @@
     },
     "official_warnings": {
       "cwa": {
-        "status": "caution",
-        "detail": "caution: some active warnings have missing issue, expiry or exact area"
+        "status": "ok",
+        "detail": "ready: exact-area alerts and issue/valid times retained"
       },
       "wra_urban_inundation": {
         "status": "ok",
@@ -356,10 +356,7 @@
       }
     ],
     "new_source_failures": [
-      "taipei/gfs",
-      "taipei/ifs_monsoon",
-      "tokyo_minato/gfs",
-      "tokyo_minato/ifs_long"
+      "gtsm/blueearth_status"
     ],
     "quality_state": "partial",
     "quality_reasons": [
@@ -367,10 +364,7 @@
       "Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.",
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
-      "taipei/ifs_monsoon: request failed (429)",
-      "taipei/gfs: request failed (429)",
-      "tokyo_minato/ifs_long: request failed (None)",
-      "tokyo_minato/gfs: request failed (None)",
+      "gtsm/blueearth_status: request failed (None)",
       "ecmwf/cyclone_product: request failed (404)"
     ],
     "products_invalid": []
@@ -378,7 +372,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 300448 bytes"
+      "detail": "PNG signature ok, 297234 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -386,7 +380,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 299317 bytes"
+      "detail": "PNG signature ok, 301045 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
