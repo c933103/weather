@@ -845,6 +845,7 @@ def build_jobs(day):
         'jma/river_flood_warnings': 'https://www.jma.go.jp/bosai/flood/data/r8/flood_xml.json',
         'wra/inundation_public_index': 'https://opendata.wra.gov.tw/cloud/5982FloodWarningOfDisasterPreventionInformation/286-%E9%98%B2%E7%81%BD%E8%B3%87%E8%A8%8A_%E6%B7%B9%E6%B0%B4%E8%AD%A6%E6%88%92.kml',
         'wra/inundation_warning': 'https://fhy.wra.gov.tw/pub_web_2011/kml/KmlShare/NewstFloodWarm.kml',
+        'wra/river_level_warning': 'https://fhy.wra.gov.tw/pub_web_2011/kml/KmlShare/NewstWaterWarm.kml',
         'hko/flood_information': 'https://www.hko.gov.hk/en/wservice/warning/flood.htm',
         'cwa/warnings': 'https://www.cwa.gov.tw/Data/js/warn/Warning_Content.js',
         'cwa/tide_index': 'https://www.cwa.gov.tw/Data/js/fcst/Tide_Time_Data.js',
@@ -885,6 +886,11 @@ def build_jobs(day):
         # This URL is redacted before serialization, including failed attempts.
         jobs['cwa/tide_api'] = ('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-A0021-001',
                                 {'Authorization': token, 'format': 'JSON', 'LocationName': '新北市淡水區'}, False)
+        # Official municipality warning product: W-C0033-001.  Keep the
+        # existing public JS as an independent fallback when the API fails.
+        jobs['cwa/official_warning_api'] = (
+            'https://opendata.cwa.gov.tw/api/v1/rest/datastore/W-C0033-001',
+            {'Authorization': token}, False)
         # Taipei's local-observatory forecast (CWA county forecast, one week).
         jobs['cwa/forecast'] = ('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001',
                                 {'Authorization': token, 'format': 'JSON', 'locationName': '臺北市'}, False)
