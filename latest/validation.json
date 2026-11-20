@@ -1,7 +1,7 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-19T20:02:40.867295+00:00",
-  "target_date_jst": "2026-11-20",
+  "generated_at_utc": "2026-11-20T20:02:53.494967+00:00",
+  "target_date_jst": "2026-11-21",
   "cities": {
     "Hong Kong": {
       "temperature": {
@@ -226,7 +226,7 @@
       },
       "official_warning": {
         "status": "ok",
-        "detail": "2 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
+        "detail": "0 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       }
     },
     "Takamatsu": {
@@ -300,7 +300,7 @@
       },
       "official_warning": {
         "status": "ok",
-        "detail": "3 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
+        "detail": "0 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       }
     }
   },
@@ -355,16 +355,13 @@
         "text": "STOFS levels sit on the NOAA model datum: combined levels are compared only with the STOFS model's own astronomical tide, never with official tide-table datums."
       }
     ],
-    "new_source_failures": [
-      "gtsm/blueearth_status"
-    ],
+    "new_source_failures": [],
     "quality_state": "partial",
     "quality_reasons": [
       "GloFAS grids have not been matched to applicable river reaches and flood thresholds.",
       "Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.",
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
-      "gtsm/blueearth_status: request failed (None)",
       "ecmwf/cyclone_product: request failed (404)"
     ],
     "products_invalid": []
@@ -372,7 +369,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 297234 bytes"
+      "detail": "PNG signature ok, 306704 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -380,7 +377,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 301045 bytes"
+      "detail": "PNG signature ok, 299800 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
