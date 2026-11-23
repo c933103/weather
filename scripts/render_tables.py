@@ -841,12 +841,33 @@ def _track_check_flags(cw):
     return bool(checks), gfs, ecm
 
 
+_BUFR_STATUS_LABELS = {
+    'empty': '応答0バイト', 'unpublished': 'ファイル未公開',
+    'unavailable': '通信・HTTPエラー', 'malformed': 'データ形式異常',
+    'decoder_unavailable': 'デコーダー利用不可', 'adapter_error': '処理エラー',
+}
+
+
 def _ecmwf_analysis(cw):
     bufr = (cw or {}).get('ifs_cyclone_tracks') or {}
     if any(source.get('status') == 'available' for source in bufr.values()):
         return '中期IFS BUFRの進路を取得。警報との照合・EC46の進路は未検証'
-    if bufr and all(source.get('status') == 'no_regional_tracks' for source in bufr.values()):
+    streams = ('oper', 'enfo')
+    zero = [name for name in streams if (bufr.get(name) or {}).get('status') == 'no_regional_tracks']
+    if len(zero) == len(streams):
         return '中期IFS BUFRを取得。対象海域に抽出された進路は0件'
+    if zero:
+        missing = next(name for name in streams if name not in zero)
+        status = (bufr.get(missing) or {}).get('status')
+        detail = _BUFR_STATUS_LABELS.get(status, '取得状況不明')
+        partial = (f'中期IFS BUFRの{zero[0]}は対象海域の進路0件、'
+                   f'{missing}は{detail}。両系統での確認は未完了')
+        legacy = _ecmwf_legacy_analysis(cw)
+        return f'{partial}。従来照合：{legacy}' if legacy else partial
+    return _ecmwf_legacy_analysis(cw) or 'ECMWF製品・代替サンプルとも取得不可'
+
+
+def _ecmwf_legacy_analysis(cw):
     prod = (cw or {}).get('ecmwf_cyclone_product') or {}
     if prod.get('ok'):
         return 'ECMWFサイクロンプロダクトを取得し進路と照合'
@@ -864,7 +885,7 @@ def _ecmwf_analysis(cw):
     has, gfs, ecm = _track_check_flags(cw)
     if has and (gfs or ecm):
         return 'ECMWF製品は取得不可。進路サンプルで部分的に代替確認'
-    return 'ECMWF製品・代替サンプルとも取得不可'
+    return None
 
 
 def _ecmwf_values(cw):
@@ -875,14 +896,11 @@ def _ecmwf_values(cw):
         head = (f"プロダクト HTTP {prod.get('http_status')}"
                 f"・{len(prod.get('attempts') or [])}基準時刻遡及")
     bufr = (cw or {}).get('ifs_cyclone_tracks') or {}
-    statuses = {'empty': '応答0バイト', 'unpublished': 'ファイル未公開',
-                'unavailable': '通信・HTTPエラー', 'malformed': 'データ形式異常',
-                'decoder_unavailable': 'デコーダー利用不可', 'adapter_error': '処理エラー'}
     for stream, source in bufr.items():
         if source.get('cycle_utc'):
             info = f"{source['cycle_utc'].removesuffix('+00:00')}Z・{len(source.get('tracks') or [])}件"
         else:
-            info = statuses.get(source.get('status'), '取得状況不明')
+            info = _BUFR_STATUS_LABELS.get(source.get('status'), '取得状況不明')
         head += f'｜IFS BUFR {stream} {info}'
     has, gfs, ecm = _track_check_flags(cw)
     if has:
