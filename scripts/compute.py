@@ -12,6 +12,7 @@ import statistics
 from zoneinfo import ZoneInfo
 
 from collect import CITIES, iso_now, parse_time, numeric
+from ifs_cyclone import SOURCE_PREFIX as IFS_CYCLONE_PREFIX, STREAMS as IFS_CYCLONE_STREAMS
 from official_hazards import summarize as summarize_official_hazards
 
 
@@ -1142,6 +1143,13 @@ def compute_bundle(raw):
     if isinstance(ecmwf_response, str):
         ecmwf_response = ecmwf_response[:2000]
     warning_names = sorted(n for n in sources if n.startswith('jtwc/warning_'))
+    ifs_cyclone_tracks = {}
+    for stream in IFS_CYCLONE_STREAMS:
+        source = sources.get(IFS_CYCLONE_PREFIX + stream)
+        if source is not None:
+            ifs_cyclone_tracks[stream] = {**(source.get('response') or {}),
+                                          **{key: source.get(key) for key in (
+                                              'status', 'url', 'http_status', 'requested_cycle_utc', 'error')}}
     track_checks = {}
     for prefix in ('gfs/cyclone_check_', 'ecmwf_opendata/cyclone_check_'):
         for name, source in sources.items():
@@ -1165,12 +1173,11 @@ def compute_bundle(raw):
                                   'response': ecmwf_response.get('product')
                                       if isinstance(ecmwf_response, dict) else ecmwf_response},
         'track_checks': track_checks,
+        'ifs_cyclone_tracks': ifs_cyclone_tracks,
         'note': 'ABPW digest covers the advisory valid time; forecast tracks are in the '
-                'jtwc/warning_* source texts. The ECMWF entry is the OpenCharts cyclone '
-                'product probe (base-time walk-back; data or the API\'s own availability '
-                'error, retained in the official bundle); GFS and ECMWF open-data track '
-                'samples are the alternative routes when the product cannot be obtained. '
-                'None of them silently replaces JTWC warnings.'}
+                'jtwc/warning_* source texts. The IFS medium-range BUFR trajectories, '
+                'OpenCharts probe, and JTWC-guided GFS/IFS checks provide separate model '
+                'evidence. Official cyclone warnings remain the basis for advisory status.'}
     day0 = dt.date.fromisoformat(raw['target_date_jst'])
     chart_confidence = {}
     chart_confidence_aifs = {}

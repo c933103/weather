@@ -20,7 +20,7 @@ STANDING_LIMITATIONS = [
     {'id': 'weathernews_pollen_applicability',
      'text': 'Weathernews pollen numeric arrays are retrieved, but operational applicability is unverified while the public pages are closed.'},
     {'id': 'ecmwf_opencharts_endpoint',
-     'text': 'The ECMWF OpenCharts cyclone-product endpoint returns 404 at every walked-back base time (endpoint looks retired); GFS / ECMWF open-data samples are the working alternative.'},
+     'text': 'OpenCharts has returned HTTP 404. The IFS medium-range Open Data BUFR stream provides model trajectories. JTWC-guided GFS and IFS grid checks provide separate evidence.'},
     {'id': 'regional_grid_coverage',
      'text': 'The regional grids are sparse 3x3 samples: they cannot exclude a storm passing between sampling points, and no verdict of safety rests on them alone.'},
     {'id': 'stofs_datum',
@@ -143,7 +143,9 @@ def build_validation(raw, calculated):
     retrieved = [a for a in assessments if a.get('retrieved')]
     consistent = [a for a in retrieved if a.get('agreement') == 'consistent_with']
     screened = [a for a in retrieved if a.get('centre_identified')]
-    if not systems:
+    if any(v.get('status') == 'available' for v in (watch.get('ifs_cyclone_tracks') or {}).values()):
+        cyclone = _item('caution', 'Regional IFS medium-range BUFR model trajectories retrieved; agreement with official warning tracks and EC46 ensemble tracks remain unverified')
+    elif not systems:
         cyclone = _item('ok', 'no active systems in the ABPW advisory; verification rows still apply to the next system')
     elif screened:
         cyclone = _item('caution', 'IFS pressure and 10-m wind yield JTWC-guided local centre candidates; basin-wide identification and EC46 ensemble track spread are still NOT verified')
@@ -166,7 +168,8 @@ def build_validation(raw, calculated):
     new_failures = sorted(
         name for name, source in (raw.get('sources') or {}).items()
         if isinstance(source, dict) and source.get('ok') is False
-        and name not in STANDING_FAILED_SOURCES)
+        and name not in STANDING_FAILED_SOURCES
+        and (source.get('error') or {}).get('code') != 'IFS_CYCLONE_UNPUBLISHED')
     official_block = calculated.get('official_hazards') or {}
     official_summary = {}
     for kind, item in (official_block.get('regional') or {}).items():

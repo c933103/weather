@@ -96,11 +96,21 @@ notes, cyclone section and chart rows are fixed formats):
   text (`wpNNYYweb.txt`) for every active western North Pacific cyclone the
   advisory names is fetched as its own `jtwc/warning_*` source, so forecast
   tracks — not just the advisory summary — are in the bundle.
-- **ECMWF cyclone product probe**: the OpenCharts `cyclone` product endpoint
-  is queried every run with the collection day's 00Z base time and the API's
-  response (data, or its own availability error JSON) is retained verbatim as
-  `ecmwf/cyclone_product`. The 06:00 ECMWF tropical-cyclone check is therefore
-  an explicit recorded step; the probe never replaces JTWC warnings.
+- **ECMWF IFS cyclone tracks**: the collector reads the medium-range BUFR
+  `oper` and `enfo` files from ECMWF Open Data, with its AWS mirror and a
+  bounded recent-cycle search per stream. The manifest records each stream's
+  retrieval status and decoded cycle. Raw and official bundles retain source
+  attempts and the regional tracks. `calculated.cyclone_watch.ifs_cyclone_tracks`
+  carries the model, stream, cycle, encoded member number and forecast type,
+  and the actual valid times and lead hours. Missing coordinates stay null.
+  The filter keeps W-basin identifiers and trajectories with a reported or
+  modeled centre in 0–60°N, 100–180°E, retaining all points and members for
+  each selected storm. Treat the model-generated identifiers as cycle- and
+  stream-specific. The same deterministic member can appear in both streams.
+  Keep it out of perturbed-member counts. Unpublished objects, unavailable
+  transport, malformed data, zero-byte replies and valid archives with zero
+  regional tracks have distinct statuses. Official warnings provide advisory
+  status and EC46 is a separate forecast product.
 - **Chart confidence**: IFS ensemble temperature members for Hong Kong and
   Tokyo Minato Ward are collected (`temperature_ensemble`), and each chart
   date is graded 高/中/低 from the population standard deviation of the
@@ -112,7 +122,7 @@ notes, cyclone section and chart rows are fixed formats):
   its 24-hour mean change, wind direction at the maximum-wind hour, WBGT
   band, and the fixed-threshold 高PM / 霜 flags), PM2.5/PM10 ranges, a
   `cyclone_watch` digest parsed from ABPW with the warning-source inventory
-  and the ECMWF probe result, and the `chart_confidence` grades.
+  and the ECMWF probe and IFS BUFR results, and the `chart_confidence` grades.
 
 ## Model plurality, space weather, chart cascade and SVG
 
@@ -132,8 +142,7 @@ notes, cyclone section and chart rows are fixed formats):
   NOAA GFS MSLP/wind (`gfs/cyclone_check_*`) and ECMWF open-data IFS via
   per-step index byte ranges and eccodes decoding
   (`ecmwf_opendata/cyclone_check_*`) — surfaced in
-  `calculated.cyclone_watch.track_checks`. A failed retrieval is always
-  answered by another route before anything is treated as missing.
+  `calculated.cyclone_watch.track_checks` alongside the BUFR tracks.
 - **Space weather**: `calculated.json` carries a `space_weather` digest parsed
   from the SWPC products already collected (alert product ids, highest G-scale
   and Kp in the outlooks, and an `extreme` flag at warning level or G2+), so
