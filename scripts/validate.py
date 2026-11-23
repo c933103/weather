@@ -144,6 +144,9 @@ def build_validation(raw, calculated):
         advisory = _item('ok', f'{len(systems)} active systems parsed from the WNP ABPW advisory')
     elif advisory_status == 'quiet':
         advisory = _item('ok', 'the WNP ABPW advisory explicitly reports no active systems')
+    elif advisory_status in ('expired', 'not_yet_valid', 'validity_unverified'):
+        advisory = _item('invalid', f'JTWC ABPW validity at report time: {advisory_status}; '
+                                     'no current advisory conclusion')
     elif advisory_status == 'unrecognized':
         advisory = _item('invalid', 'JTWC ABPW response could not be recognized; no quiet conclusion')
     else:

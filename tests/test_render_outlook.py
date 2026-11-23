@@ -108,12 +108,23 @@ class RenderOutlookTests(unittest.TestCase):
 
     def test_table3_no_systems_is_one_line_only_with_explicit_wnp_advisory(self):
         # Real ABPW field structure, including different regional advice.
-        header = 'ABPW10 PGTW 231200\r\n1. WESTERN NORTH PACIFIC AREA (180 TO MALAY PENINSULA):\r\n'
+        prefix = ('ABPW10 PGTW 231200\r\n'
+                  'SUBJ/SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND SOUTH\r\n'
+                  'PACIFIC OCEANS REISSUED/')
+        region = '1. WESTERN NORTH PACIFIC AREA (180 TO MALAY PENINSULA):\r\n'
+        header = prefix + '231300Z-240600ZNOV2026//\r\nRMKS/\r\n' + region
+        as_of = '2026-11-23T21:00:00+00:00'
         quiet = '   A. TROPICAL CYCLONE SUMMARY: NONE.\r\n'
         south = '2. SOUTH PACIFIC AREA (WEST COAST OF SOUTH AMERICA TO 135 EAST):\r\n' + quiet
         unverified = '熱帯低気圧：JTWCの情報を確認できず\n'
         cases = [
             ({'ok': True, 'response': header + quiet + south}, 'quiet', 'ok', '熱帯低気圧：なし\n'),
+            ({'ok': True, 'response': header.replace('231300Z-240600Z', '221300Z-230600Z') + quiet},
+             'expired', 'invalid', unverified),
+            ({'ok': True, 'response': header.replace('231300Z-240600Z', '240000Z-240600Z') + quiet},
+             'not_yet_valid', 'invalid', unverified),
+            ({'ok': True, 'response': 'ABPW10 PGTW 231200\r\n' + region + quiet},
+             'validity_unverified', 'invalid', unverified),
             ({'ok': False, 'response': header + quiet + south}, 'unavailable', 'missing', unverified),
             (None, 'unavailable', 'missing', unverified),
             ({'ok': True, 'response': 'HTTP 200, no bulletin'}, 'unrecognized', 'invalid', unverified),
@@ -122,7 +133,7 @@ class RenderOutlookTests(unittest.TestCase):
         ]
         for source, status, validation_status, line in cases:
             with self.subTest(status=status, source=source):
-                watch = jtwc_advisory_from_source(source)
+                watch = jtwc_advisory_from_source(source, as_of)
                 self.assertEqual(watch['advisory_status'], status)
                 data = {**calculated(), 'cyclone_watch': watch}
                 t3, _ = render_outlook(raw(), data)
@@ -135,6 +146,25 @@ class RenderOutlookTests(unittest.TestCase):
                     path = Path(tmp)
                     (path / 'table3.md').write_text(t3, encoding='utf-8')
                     self.assertEqual(check_products({}, path)['table3']['status'], 'ok')
+
+    def test_jtwc_checks_window_boundaries_and_explicit_year_rollover(self):
+        text = ('ABPW10 PGTW 310600\n'
+                'SUBJ/SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND\n'
+                '/SOUTH PACIFIC OCEANS/311800ZDEC2026-010600ZJAN2027//\n'
+                'RMKS/\n1. WESTERN NORTH PACIFIC AREA:\n'
+                '   A. TROPICAL CYCLONE SUMMARY: NONE.\n')
+        source = {'ok': True, 'response': text}
+        current = jtwc_advisory_from_source(source, '2027-01-01T03:00:00+00:00')
+        self.assertEqual(current['advisory_status'], 'quiet')
+        self.assertEqual(current['valid_from_utc'], '2026-12-31T18:00:00+00:00')
+        self.assertEqual(current['valid_until_utc'], '2027-01-01T06:00:00+00:00')
+        for as_of, status in [('2026-12-31T18:00:00+00:00', 'quiet'),
+                              ('2027-01-01T06:00:00+00:00', 'expired'),
+                              (None, 'validity_unverified')]:
+            self.assertEqual(jtwc_advisory_from_source(source, as_of)['advisory_status'], status)
+        source['response'] = text.replace('DEC2026', '')
+        self.assertEqual(jtwc_advisory_from_source(source, '2027-01-01T03:00:00+00:00')
+                         ['advisory_status'], 'validity_unverified')
 
     def test_available_bufr_does_not_verify_missing_jtwc(self):
         watch = jtwc_advisory_from_source(None)

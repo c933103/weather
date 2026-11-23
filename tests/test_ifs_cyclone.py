@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import collect
 import ifs_cyclone as ifs
 import read_bundle
+from compute import compute_bundle
 from prepare_report import prepare
 from render_tables import _ecmwf_analysis, _ecmwf_values
 from validate import build_validation
@@ -197,6 +198,8 @@ class CollectionTests(unittest.TestCase):
 
         def offline_source(url, params=None, **kwargs):
             outlook = ('ABPW10 PGTW 210900\n'
+                       'SUBJ/SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND SOUTH\n'
+                       'PACIFIC OCEANS/210600Z-220600ZNOV2026//\n'
                        'A. TROPICAL CYCLONE SUMMARY:\n'
                        '(1) TROPICAL STORM 31W (TEST) WAS LOCATED NEAR 20.0N 130.0E.\n'
                        'B. TROPICAL DISTURBANCE SUMMARY:\n')
@@ -244,6 +247,12 @@ class CollectionTests(unittest.TestCase):
         watch = calculated['cyclone_watch']
         self.assertIn('ecmwf_opendata/cyclone_check_31w', watch['track_checks'])
         self.assertEqual({s['id'] for s in watch['systems']}, {'31W'})
+        later = compute_bundle({**raw, 'window_start_utc': '2026-11-22T06:00:00+00:00'})
+        late_watch = later['cyclone_watch']
+        self.assertEqual(late_watch['advisory_status'], 'expired')
+        self.assertEqual(late_watch['valid_until_utc'], '2026-11-22T06:00:00+00:00')
+        self.assertEqual(late_watch['systems'], [])
+        self.assertEqual(late_watch['ifs_cyclone_tracks'], watch['ifs_cyclone_tracks'])
         for stream, count in (('oper', 9), ('enfo', 50)):
             name = ifs.SOURCE_PREFIX + stream
             self.assertEqual(manifest['source_status'][name]['status'], 'available')
