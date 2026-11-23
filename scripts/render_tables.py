@@ -1014,8 +1014,10 @@ def render_outlook(raw, calculated):
         t3 = ['| 名称 | 現在位置・強度 | 移動 | 脅威・最接近 |', '|---|---|---|---|']
         t3 += [_system_row(raw, anchor, s) for s in systems]
         table3 = '\n'.join(t3) + '\n'
-    else:
+    elif cw.get('advisory_status') == 'quiet':
         table3 = '熱帯低気圧：なし\n'
+    else:
+        table3 = '熱帯低気圧：JTWCの情報を確認できず\n'
     digest = calculated.get('regional_digest') or {}
     sw = calculated.get('space_weather')
     t4 = ['| 項目 | 分析 | 数値・根拠 |', '|---|---|---|',

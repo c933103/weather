@@ -4,12 +4,14 @@ Analysis first (user correction, 2026-11-08): Table 3 reads the current
 JTWC warning text, Table 4 separates 分析 from 数値・根拠.
 """
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from render_tables import render_outlook
-from compute import regional_digest, parse_space_weather
+from compute import regional_digest, parse_space_weather, jtwc_advisory_from_source
+from validate import build_validation, check_products
 
 WARNING = """WTPN31 PGTW 072100
 MSGID/GENADMIN/JOINT TYPHOON WRNCEN PEARL HARBOR HI//
@@ -104,11 +106,42 @@ class RenderOutlookTests(unittest.TestCase):
         self.assertIn('| WNW 16kt |', row)
         self.assertIn('―（警報未発出）', row)
 
-    def test_table3_no_systems_is_one_line(self):
-        calc = calculated()
-        calc['cyclone_watch'] = {**calc['cyclone_watch'], 'systems': []}
-        t3, _t4 = render_outlook(raw(), calc)
-        self.assertEqual(t3, '熱帯低気圧：なし\n')
+    def test_table3_no_systems_is_one_line_only_with_explicit_wnp_advisory(self):
+        # Real ABPW field structure, including different regional advice.
+        header = 'ABPW10 PGTW 231200\r\n1. WESTERN NORTH PACIFIC AREA (180 TO MALAY PENINSULA):\r\n'
+        quiet = '   A. TROPICAL CYCLONE SUMMARY: NONE.\r\n'
+        south = '2. SOUTH PACIFIC AREA (WEST COAST OF SOUTH AMERICA TO 135 EAST):\r\n' + quiet
+        unverified = '熱帯低気圧：JTWCの情報を確認できず\n'
+        cases = [
+            ({'ok': True, 'response': header + quiet + south}, 'quiet', 'ok', '熱帯低気圧：なし\n'),
+            ({'ok': False, 'response': header + quiet + south}, 'unavailable', 'missing', unverified),
+            (None, 'unavailable', 'missing', unverified),
+            ({'ok': True, 'response': 'HTTP 200, no bulletin'}, 'unrecognized', 'invalid', unverified),
+            ({'ok': True, 'response': header + '   A. TROPICAL CYCLONE SUMMARY: NO OTHER TROPICAL CYCLONES.\r\n' + south},
+             'unrecognized', 'invalid', unverified),
+        ]
+        for source, status, validation_status, line in cases:
+            with self.subTest(status=status, source=source):
+                watch = jtwc_advisory_from_source(source)
+                self.assertEqual(watch['advisory_status'], status)
+                data = {**calculated(), 'cyclone_watch': watch}
+                t3, _ = render_outlook(raw(), data)
+                self.assertEqual(t3, line)
+                hazards = build_validation({}, data)['hazards']
+                self.assertEqual(hazards['jtwc_advisory']['status'], validation_status)
+                self.assertEqual(hazards['cyclone_verification']['status'],
+                                 'ok' if status == 'quiet' else 'missing')
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp)
+                    (path / 'table3.md').write_text(t3, encoding='utf-8')
+                    self.assertEqual(check_products({}, path)['table3']['status'], 'ok')
+
+    def test_available_bufr_does_not_verify_missing_jtwc(self):
+        watch = jtwc_advisory_from_source(None)
+        watch['ifs_cyclone_tracks'] = {'oper': {'status': 'available'}}
+        hazards = build_validation({}, {'cyclone_watch': watch})['hazards']
+        self.assertEqual(hazards['jtwc_advisory']['status'], 'missing')
+        self.assertEqual(hazards['cyclone_verification']['status'], 'caution')
 
     def test_table4_analysis_and_values_separated(self):
         _t3, t4 = render_outlook(raw(), calculated())

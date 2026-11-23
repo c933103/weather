@@ -410,7 +410,8 @@ def parse_jtwc_abpw(text):
     Systems are parsed from the tropical-cyclone summary only; positions and
     winds are the advisory's own estimates at its stated valid time.
     """
-    empty = {'systems': [], 'no_other_cyclones': False, 'disturbances_none': False,
+    empty = {'systems': [], 'advisory_status': 'unrecognized',
+             'no_other_cyclones': False, 'disturbances_none': False,
              'subtropical_none': False, 'monsoon_mentions': []}
     if not isinstance(text, str) or not text:
         return empty
@@ -431,12 +432,28 @@ def parse_jtwc_abpw(text):
             'movement_kt': int(move.group(2)) if move else None,
             'max_winds_kt': int(winds.group(1)) if winds else None,
             'gusts_kt': int(winds.group(2)) if winds else None})
+    # Absence of a parsed track, or the phrase NO OTHER, is not an
+    # all-clear. Require the named WNP section's explicit quiet field.
+    wnp = re.search(r'^\s*1\. WESTERN NORTH PACIFIC AREA[^\r\n]*', segment, re.MULTILINE)
+    explicit_none = bool(
+        re.search(r'^ABPW10 PGTW \d{6}\s*$', segment, re.MULTILINE)
+        and wnp and re.search(
+            r'^[ \t]*A\. TROPICAL CYCLONE SUMMARY:[ \t\r\n]*NONE\.[ \t\r]*$',
+            segment[wnp.end():], re.MULTILINE))
     return {'systems': systems,
+            'advisory_status': 'active' if systems else 'quiet' if explicit_none else 'unrecognized',
             'no_other_cyclones': 'NO OTHER TROPICAL CYCLONES' in segment,
             'disturbances_none': bool(re.search(r'TROPICAL DISTURBANCE SUMMARY:\s*NONE', segment)),
             'subtropical_none': bool(re.search(r'SUBTROPICAL SYSTEM SUMMARY:\s*NONE', segment)),
             'monsoon_mentions': [line.strip() for line in segment.splitlines()
                                  if 'MONSOON' in line.upper()][:5]}
+
+
+def jtwc_advisory_from_source(source):
+    source = source or {}
+    if source.get('ok') is not True:
+        return {**parse_jtwc_abpw(None), 'advisory_status': 'unavailable'}
+    return parse_jtwc_abpw(source.get('response'))
 
 
 def select(hourly, field, start, end, accumulated=False):
@@ -1160,7 +1177,7 @@ def compute_bundle(raw):
                 track_checks[name] = {'ok': source.get('ok'), 'samples': samples,
                                       'assessment': _track_assessment(samples, key)}
     cyclone_watch = {
-        **parse_jtwc_abpw(sources.get('jtwc/outlook', {}).get('response')),
+        **jtwc_advisory_from_source(sources.get('jtwc/outlook')),
         'warning_sources': warning_names,
         'warnings_all_ok': all(sources[n].get('ok') for n in warning_names) if warning_names else None,
         'ecmwf_cyclone_product': {'ok': ecmwf_probe.get('ok'),
