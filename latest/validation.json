@@ -1,7 +1,7 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-22T20:02:01.403706+00:00",
-  "target_date_jst": "2026-11-23",
+  "generated_at_utc": "2026-11-23T07:49:24.733394+00:00",
+  "target_date_jst": "2026-11-24",
   "cities": {
     "Hong Kong": {
       "temperature": {
@@ -120,7 +120,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: none"
+        "detail": "classification: mist"
       },
       "frost": {
         "status": "ok",
@@ -202,7 +202,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: none"
+        "detail": "classification: mist"
       },
       "frost": {
         "status": "ok",
@@ -225,8 +225,8 @@
         "detail": "pollen state (in season / out of season / not yet published / unavailable) must be read from the source itself; none of these states is a zero"
       },
       "official_warning": {
-        "status": "ok",
-        "detail": "1 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
+        "status": "caution",
+        "detail": "municipal warning applicability: caution; R8 JSON is per-phenomenon latest history, not a current full municipal snapshot; issue times can be old for ongoing event-driven warnings"
       }
     },
     "Takamatsu": {
@@ -276,7 +276,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: none"
+        "detail": "classification: mist"
       },
       "frost": {
         "status": "ok",
@@ -306,8 +306,8 @@
   },
   "hazards": {
     "cyclone_verification": {
-      "status": "ok",
-      "detail": "no active systems in the ABPW advisory; verification rows still apply to the next system"
+      "status": "caution",
+      "detail": "Regional IFS medium-range BUFR model trajectories retrieved; agreement with official warning tracks and EC46 ensemble tracks remain unverified"
     },
     "space_weather": {
       "status": "ok",
@@ -344,7 +344,7 @@
       },
       {
         "id": "ecmwf_opencharts_endpoint",
-        "text": "The ECMWF OpenCharts cyclone-product endpoint returns 404 at every walked-back base time (endpoint looks retired); GFS / ECMWF open-data samples are the working alternative."
+        "text": "OpenCharts has returned HTTP 404. The IFS medium-range Open Data BUFR stream provides model trajectories. JTWC-guided GFS and IFS grid checks provide separate evidence."
       },
       {
         "id": "regional_grid_coverage",
@@ -369,7 +369,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 304156 bytes"
+      "detail": "PNG signature ok, 314646 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -377,7 +377,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 307222 bytes"
+      "detail": "PNG signature ok, 306495 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
