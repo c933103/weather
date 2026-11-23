@@ -17,10 +17,15 @@ from collect import CITIES, UTC, iso_now, parse_time
 READER_VERSION = 2
 
 
-def get_bytes(url):
+def get_bytes(url, expected_size=None):
+    # Regional member tracks can grow beyond the default download size.
+    # Manifest-backed reads are still bounded and checked against the hash.
+    if (expected_size is not None
+            and (type(expected_size) is not int or not 0 <= expected_size <= 100 * 1024 * 1024)):
+        raise ValueError('INVALID_DATASET_SIZE')
     with urllib.request.urlopen(urllib.request.Request(url, headers={
         'User-Agent': 'EastAsiaWeatherDaily/3.0', 'Accept': 'application/vnd.github+json'}), timeout=30) as response:
-        return response.read(12_000_000)
+        return response.read(12_000_000 if expected_size is None else expected_size + 1)
 
 
 def validate_manifest(manifest, day, now, max_age_hours):
@@ -77,7 +82,7 @@ def main():
     def read_entry(key, entry):
         if not re.fullmatch(r'latest/[a-z_]+\.json', entry['path']):
             raise ValueError('UNEXPECTED_DATASET_PATH')
-        blob = get_bytes(base+entry['path'])
+        blob = get_bytes(base+entry['path'], expected_size=entry['bytes'])
         verify_bytes(blob, entry)
         return key, json.loads(blob)
     with futures.ThreadPoolExecutor(max_workers=4) as pool:

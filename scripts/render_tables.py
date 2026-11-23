@@ -842,6 +842,11 @@ def _track_check_flags(cw):
 
 
 def _ecmwf_analysis(cw):
+    bufr = (cw or {}).get('ifs_cyclone_tracks') or {}
+    if any(source.get('status') == 'available' for source in bufr.values()):
+        return '中期IFS BUFRの進路を取得。警報との照合・EC46の進路は未検証'
+    if bufr and all(source.get('status') == 'no_regional_tracks' for source in bufr.values()):
+        return '中期IFS BUFRを取得。対象海域に抽出された進路は0件'
     prod = (cw or {}).get('ecmwf_cyclone_product') or {}
     if prod.get('ok'):
         return 'ECMWFサイクロンプロダクトを取得し進路と照合'
@@ -869,6 +874,16 @@ def _ecmwf_values(cw):
     else:
         head = (f"プロダクト HTTP {prod.get('http_status')}"
                 f"・{len(prod.get('attempts') or [])}基準時刻遡及")
+    bufr = (cw or {}).get('ifs_cyclone_tracks') or {}
+    statuses = {'empty': '応答0バイト', 'unpublished': 'ファイル未公開',
+                'unavailable': '通信・HTTPエラー', 'malformed': 'データ形式異常',
+                'decoder_unavailable': 'デコーダー利用不可', 'adapter_error': '処理エラー'}
+    for stream, source in bufr.items():
+        if source.get('cycle_utc'):
+            info = f"{source['cycle_utc'].removesuffix('+00:00')}Z・{len(source.get('tracks') or [])}件"
+        else:
+            info = statuses.get(source.get('status'), '取得状況不明')
+        head += f'｜IFS BUFR {stream} {info}'
     has, gfs, ecm = _track_check_flags(cw)
     if has:
         head += (f"｜進路サンプル GFS {'有' if gfs else 'なし'}"

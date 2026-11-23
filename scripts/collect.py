@@ -26,6 +26,8 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
+from ifs_cyclone import SOURCE_PREFIX as IFS_CYCLONE_PREFIX, STREAMS as IFS_CYCLONE_STREAMS, collect_tracks
+
 UTC = dt.timezone.utc
 JST = ZoneInfo('Asia/Tokyo')
 CITIES = {
@@ -936,6 +938,8 @@ def collect(day, out):
     jobs = build_jobs(day)
     with tempfile.TemporaryDirectory(prefix='weather-coastal-') as coastal_cache, futures.ThreadPoolExecutor(max_workers=8) as pool:
         coastal_future = pool.submit(collect_coastal, start, end, now, coastal_cache)
+        ifs_cyclone_futures = {stream: pool.submit(collect_tracks, now, stream)
+                               for stream in IFS_CYCLONE_STREAMS}
         pending = {pool.submit((lambda u, p: request(u, p, method='POST')) if numeric_job == 'POST' else numerical if numeric_job else request, url, params): name
                    for name, (url, params, numeric_job) in jobs.items()}
         for job in futures.as_completed(pending):
@@ -956,6 +960,17 @@ def collect(day, out):
         root['sources']['noaa/coastal'] = {'ok': coastal.get('ready', False), 'http_status': None,
             'fetched_at_utc': iso_now(), 'url': 'https://noaa-gestofs-pds.s3.amazonaws.com/', 'response': coastal,
             'model_initialized_at_utc': coastal.get('model_initialized_at_utc'), 'error': coastal.get('error')}
+        for stream, job in ifs_cyclone_futures.items():
+            name = IFS_CYCLONE_PREFIX + stream
+            try:
+                source = job.result()
+            except Exception as exc:
+                source = {'ok': False, 'status': 'adapter_error', 'http_status': None,
+                          'fetched_at_utc': iso_now(), 'response': None,
+                          'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
+            root['sources'][name] = source
+            print(json.dumps({'source': name, 'http': source.get('http_status'),
+                              'status': source['status']}), flush=True)
     # A live official Atom feed is an independent fallback for stale bosai JSON.
     entries = warning_feed_entries(root['sources']['jma/warning_feed'].get('response'))
     for region, label in [('tokyo', '東京都'), ('kagawa', '香川県')]:
@@ -1198,7 +1213,10 @@ def collect(day, out):
         'Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.',
     ]
     for name, source in root['sources'].items():
-        if not source['ok']:
+        if name.startswith(IFS_CYCLONE_PREFIX):
+            if not source['ok'] and source['status'] != 'unpublished':
+                q['reasons'].append(f'{name}: {source["status"]} ({source.get("http_status")})')
+        elif not source['ok']:
             q['reasons'].append(f'{name}: request failed ({source.get("http_status")})')
         elif source.get('freshness', {}).get('status') == 'stale':
             q['reasons'].append(f'{name}: stale official issue timestamp; not current warning evidence')
@@ -1240,6 +1258,10 @@ def collect(day, out):
                                 'sha256': hashlib.sha256(raw_path.read_bytes()).hexdigest()}
     manifest['source_status'] = {name: {k: source.get(k) for k in ('ok', 'http_status', 'fetched_at_utc', 'issued_at_utc', 'freshness', 'error')}
                                  for name, source in root['sources'].items()}
+    for stream in IFS_CYCLONE_STREAMS:
+        name = IFS_CYCLONE_PREFIX + stream
+        manifest['source_status'][name].update(
+            {k: root['sources'][name].get(k) for k in ('status', 'model_initialized_at_utc')})
     (latest / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps({'target_date_jst': day.isoformat(), 'quality': q, 'raw_file': str(raw_path)}, ensure_ascii=False), flush=True)
     return root
