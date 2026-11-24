@@ -9,12 +9,20 @@ from pathlib import Path
 import re
 import urllib.request
 
-from collect import CITIES, UTC, iso_now, parse_time
+from collect import CITIES, MANIFEST_SCHEMA, UTC, iso_now, parse_time
 
 # The reader is pinned to the bundle's own collector commit by the 06:00
 # run (never refreshed from floating main). A bundle whose manifest
 # requires a newer reader than this is rejected, not misread.
 READER_VERSION = 2
+DEFAULT_MAX_AGE_HOURS = 3
+ENVELOPE_KEYS = ('schema', 'target_date_jst', 'collection_utc', 'window_start_utc',
+                 'window_end_utc', 'long_end_utc', 'chart_end_utc', 'collector_commit',
+                 'workflow_run_id', 'quality')
+
+
+def bundle_envelope(manifest):
+    return {key: manifest[key] for key in ENVELOPE_KEYS}
 
 
 def get_bytes(url, expected_size=None):
@@ -28,19 +36,23 @@ def get_bytes(url, expected_size=None):
         return response.read(12_000_000 if expected_size is None else expected_size + 1)
 
 
-def validate_manifest(manifest, day, now, max_age_hours):
-    if manifest.get('schema') != 'east_asia_weather_raw_v3':
+def validate_manifest_identity(manifest, day):
+    if manifest.get('schema') != MANIFEST_SCHEMA:
         raise ValueError('UNSUPPORTED_SCHEMA')
     if manifest.get('target_date_jst') != day:
         raise ValueError('WRONG_REPORT_DATE')
-    age = (now - parse_time(manifest['collection_utc'])).total_seconds()/3600
-    if age < -0.1 or age > max_age_hours:
-        raise ValueError(f'STALE_OR_FUTURE_COLLECTION: {age:.2f} hours')
     if not all(key in manifest.get('files', {}) for key in [*CITIES, 'official']):
         raise ValueError('INCOMPLETE_FILE_MANIFEST')
     required = (manifest.get('reader') or {}).get('min_reader_version', 1)
     if required > READER_VERSION:
         raise ValueError(f'READER_TOO_OLD: bundle requires reader {required}, this is {READER_VERSION}')
+
+
+def validate_manifest(manifest, day, now, max_age_hours):
+    validate_manifest_identity(manifest, day)
+    age = (now - parse_time(manifest['collection_utc'])).total_seconds()/3600
+    if age < -0.1 or age > max_age_hours:
+        raise ValueError(f'STALE_OR_FUTURE_COLLECTION: {age:.2f} hours')
 
 
 def verify_bytes(blob, entry):
@@ -63,7 +75,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', default='c933103/weather')
     parser.add_argument('--target-date-jst', required=True)
-    parser.add_argument('--max-age-hours', type=float, default=3)
+    parser.add_argument('--max-age-hours', type=float, default=DEFAULT_MAX_AGE_HOURS)
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
     if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', args.repository):
@@ -76,8 +88,7 @@ def main():
     base = f'https://raw.githubusercontent.com/{args.repository}/{commit}/'
     manifest = json.loads(get_bytes(base+'latest/manifest.json'))
     validate_manifest(manifest, args.target_date_jst, dt.datetime.now(UTC), args.max_age_hours)
-    bundle = {k: manifest[k] for k in ('schema', 'target_date_jst', 'collection_utc', 'window_start_utc',
-              'window_end_utc', 'long_end_utc', 'chart_end_utc', 'collector_commit', 'workflow_run_id', 'quality')}
+    bundle = bundle_envelope(manifest)
     bundle.update(data_commit=commit, loaded_at_utc=iso_now(), cities={}, sources={})
     def read_entry(key, entry):
         if not re.fullmatch(r'latest/[a-z_]+\.json', entry['path']):

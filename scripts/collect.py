@@ -30,6 +30,7 @@ from ifs_cyclone import SOURCE_PREFIX as IFS_CYCLONE_PREFIX, STREAMS as IFS_CYCL
 
 UTC = dt.timezone.utc
 JST = ZoneInfo('Asia/Tokyo')
+MANIFEST_SCHEMA = 'east_asia_weather_raw_v3'
 CITIES = {
     'hong_kong': ('Hong Kong', 22.29, 114.17, 'Asia/Hong_Kong'),
     'taipei': ('Taipei', 25.033, 121.565, 'Asia/Taipei'),
@@ -926,7 +927,7 @@ def collect(day, out):
     end = start+dt.timedelta(hours=24)
     long_end = start+dt.timedelta(hours=384)
     chart_end = start+dt.timedelta(hours=320)
-    root = {'schema': 'east_asia_weather_raw_v3', 'phase': 'collection',
+    root = {'schema': MANIFEST_SCHEMA, 'phase': 'collection',
             'reader': {'min_reader_version': 2,
                        'pin': 'reader scripts are used at this collector commit, never refreshed from floating main'},
             'target_date_jst': day.isoformat(), 'collection_utc': now.isoformat(),
