@@ -9,7 +9,8 @@ import subprocess
 
 from collect import CITIES, JST, UTC, parse_time
 from publish_data import data_manifest, fetch_data_head, git
-from read_bundle import validate_calculated, validate_manifest_identity, verify_bytes
+from read_bundle import (DEFAULT_MAX_AGE_HOURS, bundle_envelope,
+                         validate_calculated, validate_manifest_identity, verify_bytes)
 
 BACKUP_CRON = '5 20 * * *'
 MAX_SCHEDULE_DELAY = dt.timedelta(hours=12)
@@ -35,11 +36,19 @@ def scheduled_report_date(schedule, created_at):
 
 def verify_report_json(commit, manifest, day):
     validate_manifest_identity(manifest, day.isoformat())
+    bundle_envelope(manifest)
     start = dt.datetime.combine(day, dt.time(6), JST)
     if (parse_time(manifest['window_start_utc']) != start
             or parse_time(manifest['window_end_utc']) != start + dt.timedelta(days=1)):
         raise ValueError('WRONG_REPORT_WINDOW')
-    parse_time(manifest['collection_utc'])
+    # Measure the lower bound at the intended presentation, not at GitHub's
+    # possibly delayed execution time. A late but otherwise valid publication
+    # may still be useful; an early push too old at 06:00 cannot replace it.
+    collected = parse_time(manifest['collection_utc'])
+    if collected < start - dt.timedelta(hours=DEFAULT_MAX_AGE_HOURS):
+        raise ValueError('COLLECTION_TOO_EARLY_FOR_REPORT')
+    if collected > dt.datetime.now(UTC) + dt.timedelta(minutes=6):
+        raise ValueError('FUTURE_COLLECTION_TIMESTAMP')
     if not isinstance(manifest['quality']['ready'], bool):
         raise ValueError('INVALID_REPORT_QUALITY')
 

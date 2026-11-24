@@ -15,6 +15,14 @@ from collect import CITIES, MANIFEST_SCHEMA, UTC, iso_now, parse_time
 # run (never refreshed from floating main). A bundle whose manifest
 # requires a newer reader than this is rejected, not misread.
 READER_VERSION = 2
+DEFAULT_MAX_AGE_HOURS = 3
+ENVELOPE_KEYS = ('schema', 'target_date_jst', 'collection_utc', 'window_start_utc',
+                 'window_end_utc', 'long_end_utc', 'chart_end_utc', 'collector_commit',
+                 'workflow_run_id', 'quality')
+
+
+def bundle_envelope(manifest):
+    return {key: manifest[key] for key in ENVELOPE_KEYS}
 
 
 def get_bytes(url):
@@ -62,7 +70,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', default='c933103/weather')
     parser.add_argument('--target-date-jst', required=True)
-    parser.add_argument('--max-age-hours', type=float, default=3)
+    parser.add_argument('--max-age-hours', type=float, default=DEFAULT_MAX_AGE_HOURS)
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
     if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', args.repository):
@@ -75,8 +83,7 @@ def main():
     base = f'https://raw.githubusercontent.com/{args.repository}/{commit}/'
     manifest = json.loads(get_bytes(base+'latest/manifest.json'))
     validate_manifest(manifest, args.target_date_jst, dt.datetime.now(UTC), args.max_age_hours)
-    bundle = {k: manifest[k] for k in ('schema', 'target_date_jst', 'collection_utc', 'window_start_utc',
-              'window_end_utc', 'long_end_utc', 'chart_end_utc', 'collector_commit', 'workflow_run_id', 'quality')}
+    bundle = bundle_envelope(manifest)
     bundle.update(data_commit=commit, loaded_at_utc=iso_now(), cities={}, sources={})
     def read_entry(key, entry):
         if not re.fullmatch(r'latest/[a-z_]+\.json', entry['path']):

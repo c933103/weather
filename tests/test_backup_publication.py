@@ -73,11 +73,13 @@ class DataBranchTests(unittest.TestCase):
         self.assertEqual(self.outputs.read_text().splitlines(),
                          ['target_date_jst=2026-11-22', f'proceed={expected_proceed}'])
 
-    def write_bundle(self, day='2026-11-22', revision=1):
+    def write_bundle(self, day='2026-11-22', revision=1, collection='2026-11-21T20:01:36+00:00', omit=None):
         manifest = {'schema': MANIFEST_SCHEMA, 'target_date_jst': day, 'quality': {'ready': False},
-                    'collection_utc': '2026-11-21T20:01:36+00:00', 'collector_commit': 'collector',
+                    'collection_utc': collection, 'collector_commit': 'collector',
                     'workflow_run_id': str(revision), 'window_start_utc': '2026-11-21T21:00:00+00:00',
-                    'window_end_utc': '2026-11-22T21:00:00+00:00', 'raw_artifact': {'sha256': 'raw'},
+                    'window_end_utc': '2026-11-22T21:00:00+00:00',
+                    'chart_end_utc': '2026-11-27T21:00:00+00:00',
+                    'long_end_utc': '2026-12-06T21:00:00+00:00', 'raw_artifact': {'sha256': 'raw'},
                     'files': {}}
         records = {key: {'key': key} for key in CITIES}
         records.update(official={}, regional={}, calculated={
@@ -89,6 +91,8 @@ class DataBranchTests(unittest.TestCase):
             (self.latest / f'{key}.json').write_bytes(blob)
             manifest['files'][key] = {'path': f'latest/{key}.json', 'bytes': len(blob),
                                       'sha256': hashlib.sha256(blob).hexdigest()}
+        if omit:
+            del manifest[omit]
         (self.latest / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
 
     def test_only_publication_for_the_intended_date_suppresses_backup(self):
@@ -111,6 +115,36 @@ class DataBranchTests(unittest.TestCase):
                     record.write_text('{}', encoding='utf-8')
                 self.publish()
                 self.guard('true')
+
+    def test_reader_required_envelope_fields_cannot_be_omitted(self):
+        for key in ('chart_end_utc', 'long_end_utc'):
+            with self.subTest(key=key):
+                self.write_bundle(omit=key)
+                self.publish()
+                self.guard('true')
+
+    def test_same_date_early_push_cannot_suppress_morning_backup(self):
+        self.write_bundle(collection='2026-11-21T07:48:36+00:00')
+        self.publish()
+        self.guard('true')
+        # A suitable primary remains suitable even when the backup starts
+        # hours later. Test the exact inclusive reader-age boundary.
+        self.write_bundle(collection='2026-11-21T18:00:00+00:00')
+        self.publish()
+        self.guard('false')
+        self.write_bundle(collection='2026-11-21T17:59:59+00:00')
+        self.publish()
+        self.guard('true')
+
+    def test_already_published_late_backup_does_not_repeat(self):
+        self.write_bundle(collection='2026-11-22T00:15:00+00:00')
+        self.publish()
+        self.guard('false')
+
+    def test_future_collection_timestamp_does_not_suppress_backup(self):
+        self.write_bundle(collection='2099-01-01T00:00:00+00:00')
+        self.publish()
+        self.guard('true')
 
     def test_older_candidate_cannot_overwrite_newer_data(self):
         self.write_bundle('2026-11-23')
