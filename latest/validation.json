@@ -1,6 +1,6 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-24T02:56:21.865940+00:00",
+  "generated_at_utc": "2026-11-24T20:50:41.282603+00:00",
   "target_date_jst": "2026-11-25",
   "cities": {
     "Hong Kong": {
@@ -50,7 +50,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: none"
+        "detail": "classification: mist"
       },
       "frost": {
         "status": "ok",
@@ -143,8 +143,8 @@
         "detail": "no pollen block for this city (CAMS pollen is Europe-only: no claim either way)"
       },
       "official_warning": {
-        "status": "ok",
-        "detail": "0 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
+        "status": "caution",
+        "detail": "municipal warning applicability: caution; not independently validated"
       },
       "wra_urban_warning": {
         "status": "ok",
@@ -226,7 +226,7 @@
       },
       "official_warning": {
         "status": "ok",
-        "detail": "2 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
+        "detail": "3 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       }
     },
     "Takamatsu": {
@@ -300,7 +300,7 @@
       },
       "official_warning": {
         "status": "ok",
-        "detail": "2 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
+        "detail": "0 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       }
     }
   },
@@ -315,8 +315,8 @@
     },
     "official_warnings": {
       "cwa": {
-        "status": "ok",
-        "detail": "ready: exact-area alerts and issue/valid times retained"
+        "status": "caution",
+        "detail": "caution: some active warnings have missing issue, expiry or exact area"
       },
       "wra_urban_inundation": {
         "status": "ok",
@@ -369,7 +369,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 318227 bytes"
+      "detail": "PNG signature ok, 296019 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -377,7 +377,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 299625 bytes"
+      "detail": "PNG signature ok, 299524 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
