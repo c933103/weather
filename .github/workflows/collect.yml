@@ -6,14 +6,8 @@ on:
   # target_date_jst (GitHub's own scheduler fired the 2026-11-09 run
   # 3h25m late and dropped the 2026-11-10 slot entirely).
   # Backup: the GitHub schedule below fires 5 minutes after the primary
-  # (05:05 JST nominal; GitHub may start it later than that). The
-  # dispatch_guard job turns it into a no-op whenever another run of
-  # this workflow already started in this data cycle — at or after the
-  # 18:00 UTC release of the 12 UTC-based data the cycle is built on
-  # (ECMWF disseminates that run 17:45-19:34 UTC; the 20:00 UTC
-  # primary dispatch sits after it) — so the backup collects only
-  # when the primary dispatch did not trigger, and a run on the
-  # previous (00 UTC) cycle never suppresses it.
+  # (05:05 JST nominal). dispatch_guard binds a delayed schedule run
+  # to its report date and checks the published data branch.
   schedule:
     - cron: '5 20 * * *' # 05:05 JST backup; guarded, see dispatch_guard
   workflow_dispatch:
@@ -33,12 +27,11 @@ on:
     paths: ['scripts/**', 'tests/**', 'requirements-*.txt', '.github/workflows/collect.yml']
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 concurrency:
-  group: east-asia-weather-collection
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('east-asia-weather-pr-tests-{0}', github.ref) || 'east-asia-weather-collection' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   dispatch_guard:
@@ -46,74 +39,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
       actions: read
     outputs:
       proceed: ${{ steps.guard.outputs.proceed }}
+      target_date_jst: ${{ steps.guard.outputs.target_date_jst }}
     steps:
-      - name: Backup schedule yields when the primary dispatch already started a run
+      - name: Check out backup guard
+        if: github.event_name == 'schedule'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check publication for the scheduled report date
         id: guard
         env:
           GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-          RUN_ID: ${{ github.run_id }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
-          if [ "$EVENT" != "schedule" ]; then
+          if [ "$GITHUB_EVENT_NAME" != "schedule" ]; then
             echo "proceed=true" >> "$GITHUB_OUTPUT"
-            echo "Not a schedule run; proceeding."
             exit 0
           fi
-          python3 - <<'PY'
-          import json, os, urllib.request
-          from datetime import datetime, timedelta, timezone
-          def decide():
-              token = os.environ['GH_TOKEN']
-              repo = os.environ['GITHUB_REPOSITORY']
-              run_id = int(os.environ['RUN_ID'])
-              req = urllib.request.Request(
-                  f'https://api.github.com/repos/{repo}/actions/workflows/collect.yml/runs?per_page=15',
-                  headers={'Authorization': f'Bearer {token}',
-                           'Accept': 'application/vnd.github+json',
-                           'X-GitHub-Api-Version': '2022-11-28'})
-              with urllib.request.urlopen(req, timeout=60) as resp:
-                  runs = json.load(resp)['workflow_runs']
-              # Cycle boundary: this report cycle is built on the 12 UTC
-              # model run, whose data ECMWF releases from ~18:00 UTC
-              # (dissemination 17:45-19:34 UTC) — 12:00 UTC is only the
-              # run's base time, when nothing is available yet. Only
-              # runs created at or after the 18:00 UTC release count as
-              # this cycle's collection; a run from before it used the
-              # previous (00 UTC) cycle's data and must not suppress
-              # the backup. The anchor (start - 2h) keeps the boundary
-              # on the scheduled day even when GitHub starts this run
-              # hours late.
-              anchor = datetime.now(timezone.utc) - timedelta(hours=2)
-              cutoff = anchor.replace(hour=18, minute=0, second=0, microsecond=0)
-              if cutoff > anchor:
-                  cutoff -= timedelta(days=1)
-              others = [r for r in runs
-                        if r['id'] != run_id
-                        and datetime.strptime(r['created_at'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc) >= cutoff]
-              print(f'Cycle cutoff {cutoff.isoformat()}; other runs at/after it: {[r["id"] for r in others]}')
-              return 'false' if others else 'true'
-          try:
-              proceed = decide()
-          except Exception as exc:
-              # Fail open: a duplicate collection is harmless, a missed one is not.
-              print(f'Guard check failed ({exc!r}); proceeding.')
-              proceed = 'true'
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
-              out.write(f'proceed={proceed}\n')
-          print(f'proceed={proceed}')
-          PY
+          created_at="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)"
+          python3 scripts/backup_guard.py --schedule "$SCHEDULE" --created-at "$created_at"
   pr_tests:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-    concurrency:
-      group: east-asia-weather-pr-tests-${{ github.ref }}
-      cancel-in-progress: true
     steps:
       - name: Check out pull request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -139,6 +91,8 @@ jobs:
     if: github.event_name != 'pull_request' && needs.dispatch_guard.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: write
     steps:
       - name: Check out collector
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -163,9 +117,13 @@ jobs:
         id: collect
         continue-on-error: true
         env:
-          TARGET_DATE_JST: ${{ inputs.target_date_jst }}
+          TARGET_DATE_JST: ${{ needs.dispatch_guard.outputs.target_date_jst || inputs.target_date_jst }}
           CWA_API_KEY: ${{ secrets.CWA_API_KEY }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ -z "$TARGET_DATE_JST" ]; then
+            echo "::error::Scheduled backup has no bound report date."
+            exit 1
+          fi
           args=()
           if [ -n "$TARGET_DATE_JST" ]; then
             args+=(--target-date-jst "$TARGET_DATE_JST")
