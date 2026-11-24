@@ -71,6 +71,41 @@ def validate_calculated(record, manifest):
         raise ValueError('CALCULATION_INPUT_MISMATCH')
 
 
+# Known report outputs. A legitimately absent optional product is not corrupt;
+# but advertised bytes must be usable by both the morning reader and backup.
+def report_product_entries(products):
+    if not isinstance(products, dict):
+        raise ValueError('INVALID_PRODUCT_MANIFEST')
+    names = (
+        ('chart', 'chart.png', None),
+        ('chart_svg', 'chart.svg', None),
+        ('chart_aifs', 'chart_aifs.png', 'report_aifs.png'),
+        ('chart_aifs_svg', 'chart_aifs.svg', 'report_aifs.svg'),
+        *((f'table{i}', f'table{i}.md', f'report_table{i}.md') for i in range(1, 5)),
+        ('validation', 'validation.json', None),
+    )
+    for key, expected, output_name in names:
+        if key.startswith('chart_aifs') and not products.get('chart_aifs_ready'):
+            continue
+        entry = products.get(key)
+        if entry is None:
+            continue
+        if not isinstance(entry, dict) or entry.get('path') != f'latest/{expected}':
+            raise ValueError(f'UNEXPECTED_{key.upper()}_PATH')
+        yield key, entry, output_name
+
+
+def verify_report_product(key, entry, load):
+    blob = load(entry['path'])
+    verify_bytes(blob, entry)
+    if key == 'validation':
+        record = json.loads(blob)
+        if not isinstance(record, dict):
+            raise ValueError('INVALID_VALIDATION_PRODUCT')
+        return record
+    return blob
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', default='c933103/weather')
@@ -111,64 +146,17 @@ def main():
                 raise ValueError('CITY_IDENTITY_MISMATCH')
             bundle['cities'][CITIES[key][0]] = record
     bundle['products'] = manifest.get('products', {})
-    chart = bundle['products'].get('chart')
-    if chart:
-        if chart['path'] != 'latest/chart.png':
-            raise ValueError('UNEXPECTED_CHART_PATH')
-        blob = get_bytes(base+chart['path'])
-        verify_bytes(blob, chart)
-        chart_path = args.out.with_suffix('.png')
-        chart_path.parent.mkdir(parents=True, exist_ok=True)
-        chart_path.write_bytes(blob)
-        bundle['chart_local_path'] = str(chart_path)
-        bundle['chart_url'] = base+chart['path']
-    chart_svg = bundle['products'].get('chart_svg')
-    if chart_svg:
-        if chart_svg['path'] != 'latest/chart.svg':
-            raise ValueError('UNEXPECTED_CHART_SVG_PATH')
-        blob = get_bytes(base+chart_svg['path'])
-        verify_bytes(blob, chart_svg)
-        svg_path = args.out.with_suffix('.svg')
-        svg_path.parent.mkdir(parents=True, exist_ok=True)
-        svg_path.write_bytes(blob)
-        bundle['chart_svg_local_path'] = str(svg_path)
-        bundle['chart_svg_url'] = base+chart_svg['path']
-    # The AIFS chart is an optional product: downloaded (and verified) only
-    # when the workflow reports it ready.
-    if bundle['products'].get('chart_aifs_ready'):
-        for key, fname, expected in (('chart_aifs', 'report_aifs.png', 'latest/chart_aifs.png'),
-                                     ('chart_aifs_svg', 'report_aifs.svg', 'latest/chart_aifs.svg')):
-            entry = bundle['products'].get(key)
-            if entry:
-                if entry['path'] != expected:
-                    raise ValueError(f'UNEXPECTED_{key.upper()}_PATH')
-                blob = get_bytes(base+entry['path'])
-                verify_bytes(blob, entry)
-                aifs_path = args.out.with_name(fname)
-                aifs_path.parent.mkdir(parents=True, exist_ok=True)
-                aifs_path.write_bytes(blob)
-                bundle[f'{key}_local_path'] = str(aifs_path)
-                bundle[f'{key}_url'] = base+entry['path']
-    for key, fname in (('table1', 'report_table1.md'), ('table2', 'report_table2.md'),
-                       ('table3', 'report_table3.md'), ('table4', 'report_table4.md')):
-        entry = bundle['products'].get(key)
-        if entry:
-            if entry['path'] != f'latest/{key}.md':
-                raise ValueError(f'UNEXPECTED_{key.upper()}_PATH')
-            blob = get_bytes(base+entry['path'])
-            verify_bytes(blob, entry)
-            table_path = args.out.with_name(fname)
-            table_path.parent.mkdir(parents=True, exist_ok=True)
-            table_path.write_bytes(blob)
-            bundle[f'{key}_local_path'] = str(table_path)
-            bundle[f'{key}_url'] = base+entry['path']
-    validation = bundle['products'].get('validation')
-    if validation:
-        if validation['path'] != 'latest/validation.json':
-            raise ValueError('UNEXPECTED_VALIDATION_PATH')
-        blob = get_bytes(base+validation['path'])
-        verify_bytes(blob, validation)
-        bundle['validation'] = json.loads(blob)
+    for key, entry, output_name in report_product_entries(bundle['products']):
+        value = verify_report_product(key, entry, lambda path: get_bytes(base+path))
+        if key == 'validation':
+            bundle[key] = value
+            continue
+        local = (args.out.with_suffix(Path(entry['path']).suffix) if output_name is None
+                 else args.out.with_name(output_name))
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(value)
+        bundle[f'{key}_local_path'] = str(local)
+        bundle[f'{key}_url'] = base+entry['path']
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(bundle, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     print(json.dumps({'date': args.target_date_jst, 'data_commit': commit,
