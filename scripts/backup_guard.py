@@ -9,8 +9,9 @@ import subprocess
 
 from collect import CITIES, JST, UTC, parse_time
 from publish_data import data_manifest, fetch_data_head, git
-from read_bundle import (DEFAULT_MAX_AGE_HOURS, bundle_envelope,
-                         validate_calculated, validate_manifest_identity, verify_bytes)
+from read_bundle import (DEFAULT_MAX_AGE_HOURS, bundle_envelope, report_product_entries,
+                         validate_calculated, validate_manifest_identity, verify_bytes,
+                         verify_report_product)
 
 BACKUP_CRON = '5 20 * * *'
 MAX_SCHEDULE_DELAY = dt.timedelta(hours=12)
@@ -66,6 +67,10 @@ def verify_report_json(commit, manifest, day):
             raise ValueError(f'CITY_IDENTITY_MISMATCH: {key}')
         if key == 'calculated':
             validate_calculated(record, manifest)
+
+    for key, entry, _ in report_product_entries(manifest.get('products', {})):
+        verify_report_product(key, entry, lambda path: git(
+            'cat-file', 'blob', f'{commit}:{path}', text=False).stdout)
 
 
 def should_collect(day):
