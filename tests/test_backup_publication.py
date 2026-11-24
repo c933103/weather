@@ -116,6 +116,56 @@ class DataBranchTests(unittest.TestCase):
                 self.publish()
                 self.guard('true')
 
+    def publish_product_snapshot(self, products):
+        path = self.latest / 'manifest.json'
+        manifest = json.loads(path.read_bytes())
+        manifest['products'] = products
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        self.publish()
+
+    @staticmethod
+    def product_entry(name, blob):
+        return {'path': f'latest/{name}', 'bytes': len(blob),
+                'sha256': hashlib.sha256(blob).hexdigest()}
+
+    def test_advertised_report_products_must_match_published_bytes(self):
+        for key, name, blob in (
+            ('chart', 'chart.png', b'chart-good'),
+            ('chart_svg', 'chart.svg', b'<svg/>'),
+            ('chart_aifs', 'chart_aifs.png', b'aifs-good'),
+            ('table4', 'table4.md', b'valid outlook'),
+            ('validation', 'validation.json', b'{"ready": false}'),
+        ):
+            with self.subTest(product=key):
+                self.write_bundle()
+                product = self.latest / name
+                product.write_bytes(blob)
+                products = {key: self.product_entry(name, blob), 'chart_aifs_ready': True}
+                self.publish_product_snapshot(products)
+                self.guard('false')
+                product.write_bytes(b'x' * len(blob))
+                self.publish_product_snapshot(products)
+                self.guard('true')
+                product.unlink()
+                self.publish_product_snapshot(products)
+                self.guard('true')
+
+    def test_product_paths_and_validation_json_must_be_reader_compatible(self):
+        self.write_bundle()
+        (self.latest / 'alternate.png').write_bytes(b'wrong path')
+        self.publish_product_snapshot({'chart': self.product_entry('alternate.png', b'wrong path')})
+        self.guard('true')
+        payload = b'[]'
+        (self.latest / 'validation.json').write_bytes(payload)
+        self.publish_product_snapshot({'validation': self.product_entry('validation.json', payload)})
+        self.guard('true')
+
+    def test_explicit_product_unavailability_does_not_discard_partial_report(self):
+        self.write_bundle()
+        self.publish_product_snapshot({'chart_ready': False, 'chart_aifs_ready': False,
+                                       'tables_ready': False, 'outlook_ready': False})
+        self.guard('false')
+
     def test_reader_required_envelope_fields_cannot_be_omitted(self):
         for key in ('chart_end_utc', 'long_end_utc'):
             with self.subTest(key=key):
