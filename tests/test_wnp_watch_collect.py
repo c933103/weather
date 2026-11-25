@@ -18,8 +18,8 @@ class WatchCollectionTests(unittest.TestCase):
             '2026-11-30T00:00:00+00:00'])
     def test_regions_are_not_cleared_by_missing_evidence(self):
         now = dt.datetime(2026, 11, 25, 4, 10, tzinfo=UTC)
-        with patch.object(w, 'jtwc_inventory', return_value={'status': 'inventory_unverified'}), \\
-             patch.object(w, 'cyclone_cycle', return_value={'status': 'PENDING'}), \\
+        with patch.object(w, 'jtwc_inventory', return_value={'status': 'inventory_unverified'}), \
+             patch.object(w, 'cyclone_cycle', return_value={'status': 'PENDING'}), \
              patch.object(w, 'probe_index', return_value={'status': 'fetch_failed'}):
             result = w.collection(now)
         self.assertEqual(len(result['coverage_matrix']), 4)
