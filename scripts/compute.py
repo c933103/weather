@@ -404,6 +404,10 @@ def _aifs_single_crosscheck(city):
             'note': 'AIFS Single daily highs vs IFS ENS member-mean daily highs.'}
 
 
+# WMO correction marker observed in NTSB DCA19FM045 Attachment 2.
+_ABPW_HEADING = re.compile(r'^ABPW10 PGTW [0-9]{6}(?:[ \t]+COR)?[ \t\r]*$', re.M)
+
+
 def parse_jtwc_abpw(text):
     """Digest of the JTWC western North Pacific advisory (ABPW).
 
@@ -417,14 +421,23 @@ def parse_jtwc_abpw(text):
     if not isinstance(text, str) or not text:
         return empty
     segment = re.split(r'^[ \t]*2\.[ \t]+SOUTH PACIFIC AREA\b', text, maxsplit=1, flags=re.M)[0]
+    wnp = re.search(r'^[ \t]*1\. WESTERN NORTH PACIFIC AREA[^\r\n]*', segment, re.M)
+    wnp_body = segment[wnp.end():] if wnp and _ABPW_HEADING.search(segment) else ''
+    a = re.search(r'^[ \t]*A\. TROPICAL CYCLONE SUMMARY:[ \t]*', wnp_body, re.M)
+    cyclone_summary = (re.split(r'^[ \t]*[B-Z]\.[ \t]+|//|^NNNN[ \t\r]*$',
+                                wnp_body[a.end():], maxsplit=1, flags=re.M)[0] if a else '')
     systems = []
     pattern = re.compile(
         r'(SUPER TYPHOON|TYPHOON|TROPICAL STORM|TROPICAL DEPRESSION)\s+(\d{2}[A-Z])'
-        r'\s+\(([A-Z][A-Z\- ]*)\)\s+WAS LOCATED\s+NEAR\s+([\d.]+)([NS])\s+([\d.]+)([EW])')
-    for match in pattern.finditer(segment):
-        tail = segment[match.end():match.end() + 700]
+        r'\s+\(([A-Z][A-Z\- ]*)\)\s+WAS\s+LOCATED\s+NEAR\s+([\d.]+)([NS])\s+([\d.]+)([EW])')
+    # Each numbered entry owns its movement and winds, not the next cyclone.
+    for entry in re.split(r'^[ \t]*\([0-9]+\)[ \t]+', cyclone_summary, flags=re.M):
+        match = pattern.search(entry)
+        if match is None:
+            continue
+        tail = entry[match.end():match.end() + 700]
         move = re.search(r'TRACKED\s+([A-Z\-]+)\s+AT\s+(\d+)\s+KNOTS', tail)
-        winds = re.search(r'ESTIMATED AT\s+(\d+)\s+KNOTS GUSTING TO\s+(\d+)\s+KNOTS', tail)
+        winds = re.search(r'ESTIMATED\s+AT\s+(\d+)\s+KNOTS\s+GUSTING\s+TO\s+(\d+)\s+KNOTS', tail)
         systems.append({
             'category': match.group(1), 'id': match.group(2), 'name': match.group(3),
             'latitude': float(match.group(4)) * (1 if match.group(5) == 'N' else -1),
@@ -435,12 +448,7 @@ def parse_jtwc_abpw(text):
             'gusts_kt': int(winds.group(2)) if winds else None})
     # Absence of a parsed track, or the phrase NO OTHER, is not an
     # all-clear. Require the named WNP section's explicit quiet field.
-    wnp = re.search(r'^\s*1\. WESTERN NORTH PACIFIC AREA[^\r\n]*', segment, re.MULTILINE)
-    heading_ok = bool(re.search(r'^ABPW10 PGTW \d{6}[ \t\r]*$', segment, re.M))
-    wnp_body = segment[wnp.end():] if wnp and heading_ok else ''
-    explicit_none = bool(re.search(
-        r'^[ \t]*A\. TROPICAL CYCLONE SUMMARY:[ \t\r\n]*NONE\.[ \t\r]*$',
-        wnp_body, re.M))
+    explicit_none = cyclone_summary.strip() == 'NONE.'
     # ABPW distinguishes numbered cyclones in Section A from lower-threshold
     # surveillance in Section B. Only extract from the named WNP section,
     # never from the later subtropical (C) or South Pacific sections.
@@ -457,7 +465,7 @@ def parse_jtwc_abpw(text):
             invest_ids = list(dict.fromkeys(re.findall(r'\bINVEST\s+([0-9]{2}W)\b', body)))
     return {'systems': systems,
             'advisory_status': 'active' if systems else 'quiet' if explicit_none else 'unrecognized',
-            'no_other_cyclones': 'NO OTHER TROPICAL CYCLONES' in segment,
+            'no_other_cyclones': 'NO OTHER TROPICAL CYCLONES' in cyclone_summary,
             'disturbances_none': disturbance_status == 'none',
             'disturbance_status': disturbance_status, 'disturbance_invest_ids': invest_ids,
             'subtropical_none': bool(re.search(r'SUBTROPICAL SYSTEM SUMMARY:\s*NONE', segment)),
@@ -471,7 +479,7 @@ _ABPW_MONTHS = ('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
 
 def jtwc_abpw_validity(text):
     """Parse ABPW's UTC subject interval; crossing months requires both dates."""
-    if not isinstance(text, str) or not re.search(r'^ABPW10 PGTW [0-9]{6}[ \t\r]*$', text, re.M):
+    if not isinstance(text, str) or not _ABPW_HEADING.search(text):
         return None
     subjects = re.findall(r'^SUBJ/(.*?)//', text, re.M | re.S)
     if len(subjects) != 1:
@@ -479,7 +487,7 @@ def jtwc_abpw_validity(text):
     subject = ' '.join(subjects[0].split())
     match = re.fullmatch(
         r'SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND /?SOUTH '
-        r'PACIFIC OCEANS(?: REISSUED)?/([0-9]{6})Z(?:([A-Z]{3})([0-9]{4}))?'
+        r'PACIFIC OCEANS(?: REISSUED(?: CORRECTED)?)?/([0-9]{6})Z(?:([A-Z]{3})([0-9]{4}))?'
         r'-([0-9]{6})Z([A-Z]{3})([0-9]{4})', subject)
     if not match:
         return None

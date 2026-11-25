@@ -189,6 +189,81 @@ class RenderOutlookTests(unittest.TestCase):
                 self.assertEqual(build_validation({}, report_data)['hazards']['jtwc_disturbances']['status'],
                                  validation)
 
+    def test_corrected_jtwc_archived_advisory_preserves_invests_and_expiry(self):
+        # NTSB DCA19FM045, Weather Study Attachment 2, pp. 5–7, ID 10109554.
+        # Abridged: retain the weather wire heading, subject and both invest tags.
+        text = ('ABPW10 PGTW 292330 COR\r\n'
+                'SUBJ/SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND\r\n'
+                '/SOUTH PACIFIC OCEANS REISSUED CORRECTED/292330Z-300600ZJUL2019//\r\n'
+                'RMKS/\r\n1. WESTERN NORTH PACIFIC AREA (180 TO MALAY PENINSULA):\r\n'
+                ' A. TROPICAL CYCLONE SUMMARY: NONE.\r\n'
+                ' B. TROPICAL DISTURBANCE SUMMARY:\r\n'
+                '  (1) AREA OF CONVECTION (INVEST 92W).\r\n'
+                '  (2) AREA OF CONVECTION (INVEST 93W).\r\n'
+                '2. SOUTH PACIFIC AREA:\r\n'
+                ' A. TROPICAL CYCLONE SUMMARY: NONE.\r\n'
+                ' B. TROPICAL DISTURBANCE SUMMARY: NONE.//\r\n')
+        source = {'ok': True, 'response': text}
+        current = jtwc_advisory_from_source(source, '2019-07-30T00:00:00Z')
+        self.assertEqual(current['advisory_status'], 'quiet')
+        self.assertEqual(current['disturbance_status'], 'reported')
+        self.assertEqual(current['disturbance_invest_ids'], ['92W', '93W'])
+        t3, _ = render_outlook(raw(), {'cyclone_watch': current})
+        self.assertIn('記載あり（92W、93W）', t3)
+        self.assertIn('対象地域への影響は未評価', t3)
+        expired = jtwc_advisory_from_source(source, '2019-07-30T06:00:00Z')
+        self.assertEqual(expired['advisory_status'], 'expired')
+        self.assertEqual(expired['disturbance_invest_ids'], [])
+        ordinary = text.replace('292330 COR', '300600').replace(
+            ' REISSUED CORRECTED/292330Z-300600Z', '/300600Z-310600Z')
+        self.assertEqual(jtwc_advisory_from_source(
+            {'ok': True, 'response': ordinary}, '2019-07-30T06:00:00Z'
+        )['disturbance_invest_ids'], ['92W', '93W'])
+        for malformed in (
+            text.replace('292330 COR', '292330 XYZ'),
+            text.replace('REISSUED CORRECTED', 'REISSUED FOREVER'),
+            text.replace('300600ZJUL2019', '310600ZJUL2019'),
+        ):
+            status = jtwc_advisory_from_source(
+                {'ok': True, 'response': malformed}, '2019-07-30T00:00:00Z')
+            self.assertIn(status['advisory_status'], ('unrecognized', 'validity_unverified'))
+            self.assertEqual(status['disturbance_invest_ids'], [])
+
+    def test_archived_line_wrapped_jtwc_cyclone_uses_only_section_a(self):
+        # DCA19FM045 Attachment 2, p. 10: Wipha 08W with wraps in the location,
+        # as well as between ESTIMATED and AT. Section B is not a cyclone source.
+        header = ('ABPW10 PGTW 310600\n'
+                  'SUBJ/SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND\n'
+                  '/SOUTH PACIFIC OCEANS/310600ZJUL2019-010600ZAUG2019//\n'
+                  'RMKS/\n1. WESTERN NORTH PACIFIC AREA:\n')
+        entry = (' (1) AT 31JUL19 0000Z, TROPICAL DEPRESSION 08W (WIPHA) WAS\n'
+                 'LOCATED NEAR 18.6N 112.9E. TRACKED NORTHWESTWARD AT 06 KNOTS.\n'
+                 'WINDS WERE ESTIMATED\nAT 30\nKNOTS GUSTING TO 40 KNOTS.\n')
+        footer = (' B. TROPICAL DISTURBANCE SUMMARY: AREA OF CONVECTION (INVEST 93W).\n'
+                  '2. SOUTH PACIFIC AREA:\n A. TROPICAL CYCLONE SUMMARY: NONE.//\n')
+
+        def at(body):
+            return jtwc_advisory_from_source({'ok': True, 'response': header + body},
+                                             '2019-07-31T12:00:00Z')
+
+        active = at(' A. TROPICAL CYCLONE SUMMARY:\n' + entry + footer)
+        self.assertEqual(active['advisory_status'], 'active')
+        self.assertEqual(active['systems'], [
+            {'category': 'TROPICAL DEPRESSION', 'id': '08W', 'name': 'WIPHA',
+             'latitude': 18.6, 'longitude': 112.9, 'movement_text': 'NORTHWESTWARD',
+             'movement_kt': 6, 'max_winds_kt': 30, 'gusts_kt': 40}])
+        self.assertEqual(active['disturbance_invest_ids'], ['93W'])
+        pair = at(' A. TROPICAL CYCLONE SUMMARY:\n'
+                  ' (1) TROPICAL STORM 07W (SEVEN) WAS LOCATED NEAR 20N 150E.\n'
+                  + entry.replace(' (1)', ' (2)') + footer)
+        self.assertEqual([item['id'] for item in pair['systems']], ['07W', '08W'])
+        self.assertIsNone(pair['systems'][0]['max_winds_kt'])
+        self.assertEqual(pair['systems'][1]['max_winds_kt'], 30)
+        quiet = at(' A. TROPICAL CYCLONE SUMMARY: NONE.\n' + footer.replace(
+            '2. SOUTH PACIFIC AREA:', entry + '2. SOUTH PACIFIC AREA:'))
+        self.assertEqual(quiet['advisory_status'], 'quiet')
+        self.assertEqual(quiet['systems'], [])
+
     def test_jtwc_checks_window_boundaries_and_explicit_year_rollover(self):
         text = ('ABPW10 PGTW 310600\n'
                 'SUBJ/SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND\n'
