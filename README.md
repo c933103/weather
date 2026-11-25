@@ -173,3 +173,13 @@ notes, cyclone section and chart rows are fixed formats):
 - https://github.com/ecmwf/thermofeel
 
 Weather data attribution: ECMWF via Open-Meteo; CAMS via Open-Meteo; HKO; CWA; JMA; NOAA STOFS/SWPC; NICT; Weathernews. Preserve source attribution when reusing the data. Check the applicable source terms for redistribution.
+
+### Western North Pacific watch source handoff
+
+On the `data` branch, `wnp-watch/latest.json` is a small, versioned source
+index. Read `wnp-watch/latest.json.gz` at the **same Git commit**, decompress
+it, and check its length and SHA-256 against the index before using the source
+evidence. This preserves all decoded track points and the distinct
+availability and timestamps of the original products. The uncompressed
+snapshot is also retained as a workflow artifact. Neither the index nor the
+source snapshot establishes regional impact or weather clearance.
