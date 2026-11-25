@@ -36,10 +36,10 @@ jobs:
           git fetch origin data
           git worktree add --detach /tmp/wnp-publish origin/data
           mkdir -p /tmp/wnp-publish/wnp-watch
-          cp output/wnp-watch/evidence.json /tmp/wnp-publish/wnp-watch/latest.json
+          python3 scripts/wnp_watch_handoff.py --source output/wnp-watch/evidence.json --output /tmp/wnp-publish/wnp-watch
           cd /tmp/wnp-publish
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add wnp-watch/latest.json
+          git add wnp-watch/latest.json wnp-watch/latest.json.gz
           git commit -m "Refresh WNP source handoff [skip ci]"
           git push origin HEAD:refs/heads/data
