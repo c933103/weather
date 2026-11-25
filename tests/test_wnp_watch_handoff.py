@@ -23,7 +23,10 @@ class WnpHandoffTest(unittest.TestCase):
                 'enfo': {'status': 'PENDING', 'cycle_utc': '2026-11-25T12:00:00Z'},
                 'oper': {'status': 'available', 'cycle_utc': '2026-11-25T12:00:00Z',
                          'evidence': {'tracks': [{'member_number': 31}] * 4000}},
-            }}},
+            }}, 'aifs_ens_cyclone': {'2026-11-25T06:00:00Z': {
+                'status': 'available', 'cycle_utc': '2026-11-25T06:00:00Z',
+                'evidence': {'tracks': [{'member_number': 14}]}},
+            }},
         }
         content = json.dumps(evidence, ensure_ascii=False, indent=4).encode()
         with tempfile.TemporaryDirectory() as directory:
@@ -39,6 +42,8 @@ class WnpHandoffTest(unittest.TestCase):
             self.assertNotIn('raw_advisory', index['jtwc'])
             self.assertEqual(index['ecmwf_ifs_track_inventory']['2026-11-25T12:00:00Z']['enfo']['status'],
                              'PENDING')
+            self.assertEqual(index['ecmwf_aifs_ens_track_inventory']['2026-11-25T06:00:00Z'],
+                             {'status': 'available', 'cycle_utc': '2026-11-25T06:00:00Z'})
             payload = index['payload']
             path = dest / payload['relative_path']
             compressed = path.read_bytes()

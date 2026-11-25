@@ -28,6 +28,9 @@ class WatchCollectionTests(unittest.TestCase):
         self.assertTrue(all(result['coverage_matrix'][r][p][h] == 'PENDING'
                             for r in w.REGIONS for p in w.PERIODS for h in w.HAZARDS))
         self.assertEqual(result['ecmwf']['cycle_order'][0], '2026-11-25T00:00:00Z')
+        self.assertEqual(list(result['ecmwf']['aifs_ens_cyclone']), [
+            '2026-11-25T00:00:00Z', '2026-11-24T18:00:00Z', '2026-11-24T12:00:00Z'])
+        self.assertEqual(list(result['ecmwf']['ifs_cyclone'].values())[0].keys(), {'enfo', 'oper'})
     def test_wrong_heading_and_unlabelled_timestamps_cannot_verify_jtwc_inventory(self):
         now = dt.datetime(2026, 11, 25, 4, 10, tzinfo=UTC)
         for text in ('HTTP error reference 250400', 'ABIO10 PGTW 250400',

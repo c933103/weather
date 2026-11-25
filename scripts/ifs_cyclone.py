@@ -16,13 +16,19 @@ MAX_BYTES = 12_000_000
 REGION = 'western_north_pacific'
 
 
-def archive_hours(cycle):
-    return 360 if cycle.hour in (0, 12) else 144
+def archive_hours(cycle, model="ifs"):
+    return 360 if model == "aifs-ens" or cycle.hour in (0, 12) else 144
 
 
-def product_path(cycle, stream):
-    return (f'{cycle:%Y%m%d/%Hz}/ifs/0p25/{stream}/'
-            f'{cycle:%Y%m%d%H%M%S}-{archive_hours(cycle)}h-{stream}-tf.bufr')
+def _check_model_stream(model, stream):
+    if not (model == 'ifs' and stream in STREAMS or model == 'aifs-ens' and stream == 'enfo'):
+        raise ValueError('Unsupported cyclone model or stream')
+
+
+def product_path(cycle, stream, model='ifs'):
+    _check_model_stream(model, stream)
+    return (f'{cycle:%Y%m%d/%Hz}/{model}/0p25/{stream}/'
+            f'{cycle:%Y%m%d%H%M%S}-{archive_hours(cycle, model)}h-{stream}-tf.bufr')
 
 
 def _frames(body):
@@ -53,13 +59,15 @@ def _frames(body):
     return frames
 
 
-def _decode_message(ec, handle, cycle, stream):
-    # Table 35 introduced 316082. Later WMO tables may carry the same sequence.
+def _decode_message(ec, handle, cycle, stream, model):
+    # AIFS ENS adds WMO 001030 (generating application); do not
+    # relabel a bare IFS template or accept this wrapper on an IFS path.
+    expected_descriptors = [1030, 316082] if model == 'aifs-ens' else [316082]
     if (ec.codes_get(handle, 'bufrHeaderCentre') != 98
             or ec.codes_get(handle, 'dataCategory') != 7
             or ec.codes_get(handle, 'masterTablesVersionNumber') < 35
-            or ec.codes_get_array(handle, 'unexpandedDescriptors').tolist() != [316082]):
-        raise ValueError('Expected the ECMWF tropical-cyclone template 316082')
+            or ec.codes_get_array(handle, 'unexpandedDescriptors').tolist() != expected_descriptors):
+        raise ValueError('Expected the requested ECMWF tropical-cyclone template 316082')
     header_time = dt.datetime(*(ec.codes_get(handle, 'typical' + field)
                                 for field in ('Year', 'Month', 'Day', 'Hour', 'Minute', 'Second')),
                               tzinfo=UTC)
@@ -71,6 +79,8 @@ def _decode_message(ec, handle, cycle, stream):
     if stream == 'oper' and subsets != 1:
         raise ValueError('Expected one deterministic subset per oper message')
     ec.codes_set(handle, 'unpack', 1)
+    if model == 'aifs-ens' and set(ec.codes_get_array(handle, 'generatingApplication')) != {1}:
+        raise ValueError('Unexpected AIFS ENS generating application')
 
     def values(key):
         array = ec.codes_get_array(handle, key).tolist()
@@ -144,7 +154,7 @@ def _decode_message(ec, handle, cycle, stream):
         if len(leads) != 1 or None in leads:
             raise ValueError(f'Missing or inconsistent forecast lead for {storm_id}')
         lead = leads.pop()
-        if not lead_hours[-1] < lead <= archive_hours(cycle):
+        if not lead_hours[-1] < lead <= archive_hours(cycle, model):
             raise ValueError(f'Invalid forecast lead {lead}h for {storm_id}')
         add_points(lead, 2 * index + 2, index + 1, {1})
         lead_hours.append(lead)
@@ -154,17 +164,18 @@ def _decode_message(ec, handle, cycle, stream):
             'lead_hours': lead_hours, 'members': members}
 
 
-def decode_tracks(body, cycle, stream):
+def decode_tracks(body, cycle, stream, model='ifs'):
     """Validate the whole archive and return its storms with encoded member IDs."""
     import eccodes as ec
 
+    _check_model_stream(model, stream)
     storms = []
     identities = set()
     for start, end in _frames(body):
         handle = None
         try:
             handle = ec.codes_new_from_message(body[start:end])
-            storm = _decode_message(ec, handle, cycle, stream)
+            storm = _decode_message(ec, handle, cycle, stream, model)
             current = {(storm['storm_id'], m['member_number'], m['forecast_type'])
                        for m in storm['members']}
             if identities & current:
@@ -207,9 +218,9 @@ def _fetch(url):
         return response.status, body
 
 
-def _read_product(url, cycle, stream):
+def _read_product(url, cycle, stream, model='ifs'):
     result = {'url': url, 'http_status': None, 'status': 'unavailable',
-              'requested_cycle_utc': cycle.isoformat(),
+              'requested_cycle_utc': cycle.isoformat(), 'requested_model': model,
               'fetched_at_utc': dt.datetime.now(UTC).isoformat()}
     try:
         result['http_status'], body = _fetch(url)
@@ -229,7 +240,7 @@ def _read_product(url, cycle, stream):
     try:
         if len(body) > MAX_BYTES:
             raise ValueError('BUFR response exceeds download limit')
-        storms = decode_tracks(body, cycle, stream)
+        storms = decode_tracks(body, cycle, stream, model)
     except ValueError as exc:
         return {**result, 'status': 'malformed', 'detail': str(exc)[:300]}, None
     except (ImportError, RuntimeError, OSError) as exc:

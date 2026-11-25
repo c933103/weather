@@ -163,11 +163,11 @@ def probe_indices(cycle, model, stream, kind):
     return indexed
 
 
-def cyclone_cycle(cycle, stream):
+def cyclone_cycle(cycle, stream, model='ifs'):
     attempts = []
     for origin in ORIGINS:
-        status, payload = _read_product(f'{origin}/{product_path(cycle, stream)}',
-                                        cycle, stream)
+        status, payload = _read_product(f'{origin}/{product_path(cycle, stream, model)}',
+                                        cycle, stream, model)
         attempts.append(status)
         if payload is not None:
             return {'status': status['status'], 'cycle_utc': iso(cycle),
@@ -180,6 +180,8 @@ def cyclone_cycle(cycle, stream):
 
 def collection(now):
     cycles = latest_cycles(now)
+    aifs_base = now.replace(hour=(now.hour // 6) * 6, minute=0, second=0, microsecond=0)
+    aifs_cycles = [aifs_base - dt.timedelta(hours=i) for i in (0, 6, 12)]
     result = {
         'schema': 'wnp-watch-source-handoff/v1',
         'collected_at_utc': iso(now),
@@ -191,7 +193,7 @@ def collection(now):
         'assessment_status': 'SOURCE_COLLECTION_ONLY; NO WEATHER CLEARANCE',
         'jtwc': jtwc_inventory(now),
         'ecmwf': {'cycle_order': [iso(c) for c in cycles],
-                  'ifs_cyclone': {}, 'model_indices': {}, 'classification': 'PENDING'},
+                  'ifs_cyclone': {}, 'aifs_ens_cyclone': {}, 'model_indices': {}, 'classification': 'PENDING'},
         'unresolved': [
             'TCFA independent inventory and complete same-cycle JTWC warning triads',
             'IFS/AIFS ENS regional member clouds, genesis/strike probabilities',
@@ -206,6 +208,8 @@ def collection(now):
         key = iso(cycle)
         result['ecmwf']['ifs_cyclone'][key] = {
             stream: cyclone_cycle(cycle, stream) for stream in ('enfo', 'oper')}
+    for cycle in aifs_cycles:
+        result['ecmwf']['aifs_ens_cyclone'][iso(cycle)] = cyclone_cycle(cycle, 'enfo', 'aifs-ens')
     # Bound Open Data probes: sampled lead-times for each forecast system,
     # never misdescribe a retrieved index as decoded model fields.
     for cycle in cycles[:2]:
