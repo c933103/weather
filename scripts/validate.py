@@ -139,6 +139,18 @@ def build_validation(raw, calculated):
 
     watch = calculated.get('cyclone_watch') or {}
     systems = watch.get('systems') or []
+    advisory_status = watch.get('advisory_status')
+    if systems:
+        advisory = _item('ok', f'{len(systems)} active systems parsed from the WNP ABPW advisory')
+    elif advisory_status == 'quiet':
+        advisory = _item('ok', 'the WNP ABPW advisory explicitly reports no active systems')
+    elif advisory_status in ('expired', 'not_yet_valid', 'validity_unverified'):
+        advisory = _item('invalid', f'JTWC ABPW validity at report time: {advisory_status}; '
+                                     'no current advisory conclusion')
+    elif advisory_status == 'unrecognized':
+        advisory = _item('invalid', 'JTWC ABPW response could not be recognized; no quiet conclusion')
+    else:
+        advisory = _item('missing', 'JTWC ABPW advisory unavailable or not assessed; no quiet conclusion')
     assessments = [v.get('assessment') or {} for v in (watch.get('track_checks') or {}).values()]
     retrieved = [a for a in assessments if a.get('retrieved')]
     consistent = [a for a in retrieved if a.get('agreement') == 'consistent_with']
@@ -146,7 +158,9 @@ def build_validation(raw, calculated):
     if any(v.get('status') == 'available' for v in (watch.get('ifs_cyclone_tracks') or {}).values()):
         cyclone = _item('caution', 'Regional IFS medium-range BUFR model trajectories retrieved; agreement with official warning tracks and EC46 ensemble tracks remain unverified')
     elif not systems:
-        cyclone = _item('ok', 'no active systems in the ABPW advisory; verification rows still apply to the next system')
+        cyclone = (_item('ok', 'no active systems in the ABPW advisory; verification rows still apply to the next system')
+                   if advisory_status == 'quiet'
+                   else _item('missing', 'no verified JTWC advisory or independent-model track check available'))
     elif screened:
         cyclone = _item('caution', 'IFS pressure and 10-m wind yield JTWC-guided local centre candidates; basin-wide identification and EC46 ensemble track spread are still NOT verified')
     elif consistent:
@@ -183,7 +197,7 @@ def build_validation(raw, calculated):
             'generated_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
             'target_date_jst': calculated.get('target_date_jst'),
             'cities': cities,
-            'hazards': {'cyclone_verification': cyclone, 'space_weather': space_item,
+            'hazards': {'jtwc_advisory': advisory, 'cyclone_verification': cyclone, 'space_weather': space_item,
                         'official_warnings': official_summary},
             'coverage': {'standing_limitations': STANDING_LIMITATIONS,
                          'new_source_failures': new_failures,
@@ -228,10 +242,9 @@ def check_products(products, latest):
             if '香港' not in text:
                 problems.append('city header 香港 absent')
         elif key == 'table3':
-            # Cyclone table: either the explicit no-system line, or a
-            # pipe table headed by 名称. It names warning AREAS, not the
-            # report cities, so no city header is required.
-            if text.strip() != '熱帯低気圧：なし':
+            # These are mechanical checks only: the explicit unverified line
+            # is a valid shape, not a valid official cyclone assessment.
+            if text.strip() not in ('熱帯低気圧：なし', '熱帯低気圧：JTWCの情報を確認できず'):
                 if pipe_rows < 2:
                     problems.append(f'only {pipe_rows} pipe rows')
                 if '名称' not in text:

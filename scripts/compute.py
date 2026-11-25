@@ -410,7 +410,8 @@ def parse_jtwc_abpw(text):
     Systems are parsed from the tropical-cyclone summary only; positions and
     winds are the advisory's own estimates at its stated valid time.
     """
-    empty = {'systems': [], 'no_other_cyclones': False, 'disturbances_none': False,
+    empty = {'systems': [], 'advisory_status': 'unrecognized',
+             'no_other_cyclones': False, 'disturbances_none': False,
              'subtropical_none': False, 'monsoon_mentions': []}
     if not isinstance(text, str) or not text:
         return empty
@@ -431,12 +432,79 @@ def parse_jtwc_abpw(text):
             'movement_kt': int(move.group(2)) if move else None,
             'max_winds_kt': int(winds.group(1)) if winds else None,
             'gusts_kt': int(winds.group(2)) if winds else None})
+    # Absence of a parsed track, or the phrase NO OTHER, is not an
+    # all-clear. Require the named WNP section's explicit quiet field.
+    wnp = re.search(r'^\s*1\. WESTERN NORTH PACIFIC AREA[^\r\n]*', segment, re.MULTILINE)
+    explicit_none = bool(
+        re.search(r'^ABPW10 PGTW \d{6}\s*$', segment, re.MULTILINE)
+        and wnp and re.search(
+            r'^[ \t]*A\. TROPICAL CYCLONE SUMMARY:[ \t\r\n]*NONE\.[ \t\r]*$',
+            segment[wnp.end():], re.MULTILINE))
     return {'systems': systems,
+            'advisory_status': 'active' if systems else 'quiet' if explicit_none else 'unrecognized',
             'no_other_cyclones': 'NO OTHER TROPICAL CYCLONES' in segment,
             'disturbances_none': bool(re.search(r'TROPICAL DISTURBANCE SUMMARY:\s*NONE', segment)),
             'subtropical_none': bool(re.search(r'SUBTROPICAL SYSTEM SUMMARY:\s*NONE', segment)),
             'monsoon_mentions': [line.strip() for line in segment.splitlines()
                                  if 'MONSOON' in line.upper()][:5]}
+
+
+_ABPW_MONTHS = ('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+                'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC')
+
+
+def jtwc_abpw_validity(text):
+    """Parse ABPW's UTC subject interval; crossing months requires both dates."""
+    if not isinstance(text, str) or not re.search(r'^ABPW10 PGTW [0-9]{6}[ \t\r]*$', text, re.M):
+        return None
+    subjects = re.findall(r'^SUBJ/(.*?)//', text, re.M | re.S)
+    if len(subjects) != 1:
+        return None
+    subject = ' '.join(subjects[0].split())
+    match = re.fullmatch(
+        r'SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND /?SOUTH '
+        r'PACIFIC OCEANS(?: REISSUED)?/([0-9]{6})Z(?:([A-Z]{3})([0-9]{4}))?'
+        r'-([0-9]{6})Z([A-Z]{3})([0-9]{4})', subject)
+    if not match:
+        return None
+    start_token, start_month, start_year, end_token, end_month, end_year = match.groups()
+
+    def stamp(token, month, year):
+        return dt.datetime(int(year), _ABPW_MONTHS.index(month) + 1,
+                           int(token[:2]), int(token[2:4]), int(token[4:]),
+                           tzinfo=dt.timezone.utc)
+
+    try:
+        start = stamp(start_token, start_month or end_month, start_year or end_year)
+        end = stamp(end_token, end_month, end_year)
+    except ValueError:
+        return None
+    return (start, end) if dt.timedelta(0) < end - start <= dt.timedelta(days=1) else None
+
+
+def jtwc_advisory_from_source(source, as_of=None):
+    source = source or {}
+    empty = parse_jtwc_abpw(None)
+    if source.get('ok') is not True:
+        return {**empty, 'advisory_status': 'unavailable'}
+    text = source.get('response')
+    advisory = parse_jtwc_abpw(text)
+    if advisory['advisory_status'] == 'unrecognized':
+        return advisory
+    validity = jtwc_abpw_validity(text)
+    try:
+        instant = parse_time(as_of) if isinstance(as_of, str) else as_of
+    except (ValueError, TypeError):
+        instant = None
+    if not validity or not isinstance(instant, dt.datetime) or instant.utcoffset() is None:
+        return {**empty, 'advisory_status': 'validity_unverified'}
+    start, end = validity
+    times = {'valid_from_utc': start.isoformat(), 'valid_until_utc': end.isoformat(),
+             'advisory_as_of_utc': instant.astimezone(dt.timezone.utc).isoformat()}
+    if not start <= instant < end:
+        return {**empty, **times,
+                'advisory_status': 'expired' if instant >= end else 'not_yet_valid'}
+    return {**advisory, **times}
 
 
 def select(hourly, field, start, end, accumulated=False):
@@ -1159,8 +1227,13 @@ def compute_bundle(raw):
                 key = 'gfs_pressure_msl_hpa' if prefix.startswith('gfs') else 'ecmwf_pressure_msl_hpa'
                 track_checks[name] = {'ok': source.get('ok'), 'samples': samples,
                                       'assessment': _track_assessment(samples, key)}
+    # This publication describes conditions as of the planned report start, not
+    # merely the earlier collection. Late collection instead advances that as-of.
+    advisory_times = [parse_time(raw[key]) for key in ('collection_utc', 'window_start_utc')
+                      if raw.get(key)]
     cyclone_watch = {
-        **parse_jtwc_abpw(sources.get('jtwc/outlook', {}).get('response')),
+        **jtwc_advisory_from_source(sources.get('jtwc/outlook'),
+                                    max(advisory_times, default=None)),
         'warning_sources': warning_names,
         'warnings_all_ok': all(sources[n].get('ok') for n in warning_names) if warning_names else None,
         'ecmwf_cyclone_product': {'ok': ecmwf_probe.get('ok'),
