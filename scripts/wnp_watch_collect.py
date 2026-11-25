@@ -7,6 +7,7 @@ Only JTWC and actual ECMWF products are collected.
 import argparse
 import datetime as dt
 import hashlib
+import http.client
 import json
 from pathlib import Path
 import re
@@ -45,8 +46,8 @@ def fetch_text(url, byte_limit=MAX_SOURCE_BYTES):
     try:
         request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
         with urllib.request.urlopen(request, timeout=12) as response:
-            data = response.read(byte_limit + 1)
             result['http_status'] = response.status
+            data = response.read(byte_limit + 1)
             if len(data) > byte_limit:
                 raise ValueError('response exceeds byte limit')
             text = data.decode('utf-8-sig', errors='replace')
@@ -55,7 +56,7 @@ def fetch_text(url, byte_limit=MAX_SOURCE_BYTES):
     except urllib.error.HTTPError as exc:
         result.update(http_status=exc.code, status='fetch_failed', reason='HTTP ' + str(exc.code))
         exc.close()
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, http.client.HTTPException) as exc:
         result.update(status='fetch_failed', reason=str(exc)[:250])
     return result
 

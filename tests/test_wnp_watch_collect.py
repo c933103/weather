@@ -1,9 +1,10 @@
 import datetime as dt
+import http.client
 import json
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import wnp_watch_collect as w
@@ -50,6 +51,19 @@ class WatchCollectionTests(unittest.TestCase):
             result = w.jtwc_inventory(dt.datetime(2026, 11, 25, tzinfo=UTC))
         self.assertEqual((result['status'], result['http_status']), ('fetch_failed', 503))
         self.assertNotIn('issued_at_utc', result)
+
+    def test_interrupted_http_body_is_a_source_failure_and_the_next_source_still_runs(self):
+        broken = Mock(status=200)
+        broken.read.side_effect = http.client.IncompleteRead(b'partial', expected=5)
+        good = Mock(status=200)
+        good.read.return_value = b'complete'
+        with patch.object(w.urllib.request, 'urlopen') as open_url:
+            open_url.return_value.__enter__.side_effect = [broken, good]
+            failed = w.fetch_text('https://example.invalid/broken')
+            recovered = w.fetch_text('https://example.invalid/other')
+        self.assertEqual((failed['status'], failed['http_status']), ('fetch_failed', 200))
+        self.assertNotIn('text', failed)
+        self.assertEqual(recovered['text'], 'complete')
 
     def test_packed_index_is_requested_once_and_counts_only_rows_for_each_lead(self):
         cycle = dt.datetime(2026, 11, 25, tzinfo=UTC)
