@@ -183,3 +183,10 @@ evidence. This preserves all decoded track points and the distinct
 availability and timestamps of the original products. The uncompressed
 snapshot is also retained as a workflow artifact. Neither the index nor the
 source snapshot establishes regional impact or weather clearance.
+
+A workflow-published index includes a `publication` receipt with its
+trigger (`schedule` or `workflow_dispatch`), exact collector revision, run ID
+and attempt. A fresh timestamp alone is not proof of a scheduled run. Use
+the linked attempt to verify that the WNP publication step succeeded at that
+revision, and pin both output files to the resulting data-branch commit.
+Older or offline packs without a receipt do not claim automatic publication.
