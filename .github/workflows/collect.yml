@@ -19,10 +19,9 @@ on:
   push:
     branches: [main]
     paths: ['scripts/**', 'tests/**', 'requirements-*.txt', '.github/workflows/collect.yml']
-  # Pull requests run ONLY the pr_tests job below. The collect job
-  # collects live data and publishes with contents: write, so it must
-  # never run from a pull request; dispatch_guard and collect are both
-  # gated to non-pull_request events.
+  # Pull requests run only the fixture suite; main pushes run a live
+  # collection smoke test. Only a scheduled or deliberate manual dispatch
+  # may replace the published snapshot.
   pull_request:
     paths: ['scripts/**', 'tests/**', 'requirements-*.txt', '.github/workflows/collect.yml']
 
@@ -30,7 +29,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('east-asia-weather-pr-tests-{0}', github.ref) || 'east-asia-weather-collection' }}
+  # A code-push smoke test must not displace a pending daily collection.
+  group: ${{ github.event_name == 'pull_request' && format('east-asia-weather-pr-tests-{0}', github.ref) || github.event_name == 'push' && 'east-asia-weather-push-smoke' || 'east-asia-weather-collection' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -96,6 +96,8 @@ jobs:
     steps:
       - name: Check out collector
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
       - name: Install forecast decoders and calculation/chart dependencies
         run: python3 -m pip install -r requirements-collection.txt -r requirements-compute.txt -r requirements-chart.txt
       - name: Set up R for the chart renderer
@@ -143,7 +145,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - name: Publish data and exact completeness status
-        if: always() && steps.collect.outcome != 'skipped'
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && steps.collect.outcome != 'skipped'
         run: python3 scripts/publish_data.py --output output
       - name: Write collection summary
         if: always()
