@@ -1018,6 +1018,16 @@ def render_outlook(raw, calculated):
         table3 = '熱帯低気圧：なし\n'
     else:
         table3 = '熱帯低気圧：JTWCの情報を確認できず\n'
+    disturbance_status = cw.get('disturbance_status')
+    if disturbance_status == 'reported':
+        ids = '、'.join(cw.get('disturbance_invest_ids') or [])
+        listed = f'（{ids}）' if ids else ''
+        disturbance = f'熱帯擾乱（JTWC・北西太平洋）：記載あり{listed}。発達・進路と対象地域への影響は未評価'
+    elif disturbance_status == 'none':
+        disturbance = '熱帯擾乱（JTWC・北西太平洋）：なし'
+    else:
+        disturbance = '熱帯擾乱（JTWC・北西太平洋）：情報を確認できず'
+    table3 += f'\n{disturbance}\n'
     digest = calculated.get('regional_digest') or {}
     sw = calculated.get('space_weather')
     t4 = ['| 項目 | 分析 | 数値・根拠 |', '|---|---|---|',
