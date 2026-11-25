@@ -1,0 +1,58 @@
+{
+  "schema": "wnp-watch-source-index/v1",
+  "collected_at_utc": "2026-11-25T16:15:23.178321Z",
+  "assessment_status": "SOURCE_COLLECTION_ONLY; NO WEATHER CLEARANCE",
+  "regions": [
+    "prd",
+    "luzon_strait",
+    "taiwan",
+    "tokaido"
+  ],
+  "payload": {
+    "relative_path": "latest.json.gz",
+    "encoding": "gzip",
+    "sha256": "efd02ec44c27801c50c750a906ba1797a0b142e246a882412b06aa49d823deb7",
+    "uncompressed_bytes": 22518024,
+    "compressed_sha256": "ab57c763537f285feedf1087235106c8c8d43bcad0ee734f5b21bf2e0ae22643",
+    "compressed_bytes": 523478
+  },
+  "jtwc": {
+    "status": "advisory_timestamp_checked",
+    "issued_at_utc": "2026-11-25T06:00:00Z",
+    "url": "https://www.metoc.navy.mil/jtwc/products/abpwweb.txt",
+    "sha256": "7cfdf3bbf42bc051a4b29a8ea4c831eaff959017e65f8359ade9a2c39b389447"
+  },
+  "ecmwf_ifs_track_inventory": {
+    "2026-11-25T12:00:00Z": {
+      "enfo": {
+        "status": "PENDING",
+        "cycle_utc": "2026-11-25T12:00:00Z"
+      },
+      "oper": {
+        "status": "PENDING",
+        "cycle_utc": "2026-11-25T12:00:00Z"
+      }
+    },
+    "2026-11-25T00:00:00Z": {
+      "enfo": {
+        "status": "available",
+        "cycle_utc": "2026-11-25T00:00:00Z"
+      },
+      "oper": {
+        "status": "available",
+        "cycle_utc": "2026-11-25T00:00:00Z"
+      }
+    },
+    "2026-11-24T12:00:00Z": {
+      "enfo": {
+        "status": "available",
+        "cycle_utc": "2026-11-24T12:00:00Z"
+      },
+      "oper": {
+        "status": "available",
+        "cycle_utc": "2026-11-24T12:00:00Z"
+      }
+    }
+  },
+  "provenance": "Manually invoked repository collector; not a scheduled GitHub Actions publication."
+}
