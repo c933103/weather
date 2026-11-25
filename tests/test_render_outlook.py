@@ -106,7 +106,7 @@ class RenderOutlookTests(unittest.TestCase):
         self.assertIn('| WNW 16kt |', row)
         self.assertIn('―（警報未発出）', row)
 
-    def test_table3_no_systems_is_one_line_only_with_explicit_wnp_advisory(self):
+    def test_table3_cyclone_summary_requires_explicit_current_wnp_advisory(self):
         # Real ABPW field structure, including different regional advice.
         prefix = ('ABPW10 PGTW 231200\r\n'
                   'SUBJ/SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND SOUTH\r\n'
@@ -137,7 +137,7 @@ class RenderOutlookTests(unittest.TestCase):
                 self.assertEqual(watch['advisory_status'], status)
                 data = {**calculated(), 'cyclone_watch': watch}
                 t3, _ = render_outlook(raw(), data)
-                self.assertEqual(t3, line)
+                self.assertEqual(t3, line + '\n熱帯擾乱（JTWC・北西太平洋）：情報を確認できず\n')
                 hazards = build_validation({}, data)['hazards']
                 self.assertEqual(hazards['jtwc_advisory']['status'], validation_status)
                 self.assertEqual(hazards['cyclone_verification']['status'],
@@ -146,6 +146,48 @@ class RenderOutlookTests(unittest.TestCase):
                     path = Path(tmp)
                     (path / 'table3.md').write_text(t3, encoding='utf-8')
                     self.assertEqual(check_products({}, path)['table3']['status'], 'ok')
+
+    def test_table3_disturbances_are_independent_and_bounded_to_current_wnp_section_b(self):
+        # Bulletin structure as in JTWC ABPW and the 2019 JTWC report (p. 114).
+        header = ('ABPW10 PGTW 250600\n'
+                  'SUBJ/SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND SOUTH\n'
+                  'PACIFIC OCEANS/250600Z-260600ZNOV2026//\nRMKS/\n'
+                  '1. WESTERN NORTH PACIFIC AREA (180 TO MALAY PENINSULA):\n')
+        quiet = '   A. TROPICAL CYCLONE SUMMARY: NONE.\n'
+        b = '   B. TROPICAL DISTURBANCE SUMMARY:'
+        invest = ' THE AREA OF CONVECTION (INVEST 94W) IS LOCATED NEAR 20.7N 128.2E.\n'
+        south = '2. SOUTH PACIFIC AREA:\n' + b + ' THE AREA OF CONVECTION (INVEST 97P).\n'
+        cases = [
+            (quiet + b + ' NONE.\n   C. SUBTROPICAL SYSTEM SUMMARY: NONE.\n' + south,
+             '2026-11-25T21:00:00Z', 'none', [], 'なし', 'ok'),
+            (quiet + b + invest + '   C. SUBTROPICAL SYSTEM SUMMARY: INVEST 91W.\n' + south,
+             '2026-11-25T21:00:00Z', 'reported', ['94W'], '記載あり（94W）', 'caution'),
+            (quiet + b + '\n      (1) AREA OF CONVECTION NEAR 7N 150E.\n' + south,
+             '2026-11-25T21:00:00Z', 'reported', [], '記載あり', 'caution'),
+            (quiet + b + ' NONE OBSERVED EARLIER; SECTION INCOMPLETE.\n' + south,
+             '2026-11-25T21:00:00Z', 'unverified', [], '情報を確認できず', 'missing'),
+            (quiet + south, '2026-11-25T21:00:00Z', 'unverified', [], '情報を確認できず', 'missing'),
+            (quiet + b + invest + south, '2026-11-26T06:00:00Z', 'unverified', [], '情報を確認できず', 'missing'),
+            (b + invest + south, '2026-11-25T21:00:00Z', 'reported', ['94W'], '記載あり（94W）', 'caution'),
+        ]
+        for body, as_of, status, identifiers, report, validation in cases:
+            with self.subTest(body=body, as_of=as_of):
+                watch = jtwc_advisory_from_source({'ok': True, 'response': header + body}, as_of)
+                self.assertEqual(watch['disturbance_status'], status)
+                self.assertEqual(watch['disturbance_invest_ids'], identifiers)
+                report_data = {'cyclone_watch': watch}
+                t3, _ = render_outlook(raw(), report_data)
+                self.assertIn('熱帯擾乱（JTWC・北西太平洋）：' + report, t3)
+                self.assertNotIn('91W', t3)
+                self.assertNotIn('97P', t3)
+                if status == 'reported':
+                    self.assertIn('対象地域への影響は未評価', t3)
+                if body.startswith(quiet) and as_of.startswith('2026-11-25'):
+                    self.assertTrue(t3.startswith('熱帯低気圧：なし\n'))
+                else:
+                    self.assertTrue(t3.startswith('熱帯低気圧：JTWCの情報を確認できず\n'))
+                self.assertEqual(build_validation({}, report_data)['hazards']['jtwc_disturbances']['status'],
+                                 validation)
 
     def test_jtwc_checks_window_boundaries_and_explicit_year_rollover(self):
         text = ('ABPW10 PGTW 310600\n'

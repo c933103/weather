@@ -151,6 +151,14 @@ def build_validation(raw, calculated):
         advisory = _item('invalid', 'JTWC ABPW response could not be recognized; no quiet conclusion')
     else:
         advisory = _item('missing', 'JTWC ABPW advisory unavailable or not assessed; no quiet conclusion')
+    disturbance_status = watch.get('disturbance_status')
+    if disturbance_status == 'none':
+        disturbances = _item('ok', 'current WNP ABPW Section B explicitly reports no disturbances')
+    elif disturbance_status == 'reported':
+        disturbances = _item('caution', 'current WNP ABPW Section B lists a disturbance; '
+                             'formation alerts, track and regional effects are not assessed here')
+    else:
+        disturbances = _item('missing', 'no current, recognized WNP ABPW Section B conclusion')
     assessments = [v.get('assessment') or {} for v in (watch.get('track_checks') or {}).values()]
     retrieved = [a for a in assessments if a.get('retrieved')]
     consistent = [a for a in retrieved if a.get('agreement') == 'consistent_with']
@@ -197,7 +205,8 @@ def build_validation(raw, calculated):
             'generated_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
             'target_date_jst': calculated.get('target_date_jst'),
             'cities': cities,
-            'hazards': {'jtwc_advisory': advisory, 'cyclone_verification': cyclone, 'space_weather': space_item,
+            'hazards': {'jtwc_advisory': advisory, 'jtwc_disturbances': disturbances,
+                        'cyclone_verification': cyclone, 'space_weather': space_item,
                         'official_warnings': official_summary},
             'coverage': {'standing_limitations': STANDING_LIMITATIONS,
                          'new_source_failures': new_failures,
@@ -244,7 +253,8 @@ def check_products(products, latest):
         elif key == 'table3':
             # These are mechanical checks only: the explicit unverified line
             # is a valid shape, not a valid official cyclone assessment.
-            if text.strip() not in ('熱帯低気圧：なし', '熱帯低気圧：JTWCの情報を確認できず'):
+            summary = lines[:-1] if lines and lines[-1].startswith('熱帯擾乱（JTWC・北西太平洋）：') else lines
+            if summary not in (['熱帯低気圧：なし'], ['熱帯低気圧：JTWCの情報を確認できず']):
                 if pipe_rows < 2:
                     problems.append(f'only {pipe_rows} pipe rows')
                 if '名称' not in text:

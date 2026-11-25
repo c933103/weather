@@ -412,10 +412,11 @@ def parse_jtwc_abpw(text):
     """
     empty = {'systems': [], 'advisory_status': 'unrecognized',
              'no_other_cyclones': False, 'disturbances_none': False,
+             'disturbance_status': 'unverified', 'disturbance_invest_ids': [],
              'subtropical_none': False, 'monsoon_mentions': []}
     if not isinstance(text, str) or not text:
         return empty
-    segment = text.split('2. SOUTH PACIFIC AREA')[0]
+    segment = re.split(r'^[ \t]*2\.[ \t]+SOUTH PACIFIC AREA\b', text, maxsplit=1, flags=re.M)[0]
     systems = []
     pattern = re.compile(
         r'(SUPER TYPHOON|TYPHOON|TROPICAL STORM|TROPICAL DEPRESSION)\s+(\d{2}[A-Z])'
@@ -435,15 +436,30 @@ def parse_jtwc_abpw(text):
     # Absence of a parsed track, or the phrase NO OTHER, is not an
     # all-clear. Require the named WNP section's explicit quiet field.
     wnp = re.search(r'^\s*1\. WESTERN NORTH PACIFIC AREA[^\r\n]*', segment, re.MULTILINE)
-    explicit_none = bool(
-        re.search(r'^ABPW10 PGTW \d{6}\s*$', segment, re.MULTILINE)
-        and wnp and re.search(
-            r'^[ \t]*A\. TROPICAL CYCLONE SUMMARY:[ \t\r\n]*NONE\.[ \t\r]*$',
-            segment[wnp.end():], re.MULTILINE))
+    heading_ok = bool(re.search(r'^ABPW10 PGTW \d{6}[ \t\r]*$', segment, re.M))
+    wnp_body = segment[wnp.end():] if wnp and heading_ok else ''
+    explicit_none = bool(re.search(
+        r'^[ \t]*A\. TROPICAL CYCLONE SUMMARY:[ \t\r\n]*NONE\.[ \t\r]*$',
+        wnp_body, re.M))
+    # ABPW distinguishes numbered cyclones in Section A from lower-threshold
+    # surveillance in Section B. Only extract from the named WNP section,
+    # never from the later subtropical (C) or South Pacific sections.
+    b = list(re.finditer(r'^[ \t]*B\. TROPICAL DISTURBANCE SUMMARY:[ \t]*', wnp_body, re.M))
+    disturbance_status, invest_ids = 'unverified', []
+    if len(b) == 1:
+        body = re.split(r'^[ \t]*[C-Z]\.[ \t]+|//|^NNNN[ \t\r]*$',
+                        wnp_body[b[0].end():], maxsplit=1, flags=re.M)[0].strip()
+        if body == 'NONE.':
+            disturbance_status = 'none'
+        elif re.search(r'\b(?:INVEST[ \t\r\n]+[0-9]{2}W|AREA OF CONVECTION|'
+                       r'TROPICAL DISTURBANCE (?:IS|WAS|HAS))\b', body):
+            disturbance_status = 'reported'
+            invest_ids = list(dict.fromkeys(re.findall(r'\bINVEST\s+([0-9]{2}W)\b', body)))
     return {'systems': systems,
             'advisory_status': 'active' if systems else 'quiet' if explicit_none else 'unrecognized',
             'no_other_cyclones': 'NO OTHER TROPICAL CYCLONES' in segment,
-            'disturbances_none': bool(re.search(r'TROPICAL DISTURBANCE SUMMARY:\s*NONE', segment)),
+            'disturbances_none': disturbance_status == 'none',
+            'disturbance_status': disturbance_status, 'disturbance_invest_ids': invest_ids,
             'subtropical_none': bool(re.search(r'SUBTROPICAL SYSTEM SUMMARY:\s*NONE', segment)),
             'monsoon_mentions': [line.strip() for line in segment.splitlines()
                                  if 'MONSOON' in line.upper()][:5]}
@@ -489,7 +505,7 @@ def jtwc_advisory_from_source(source, as_of=None):
         return {**empty, 'advisory_status': 'unavailable'}
     text = source.get('response')
     advisory = parse_jtwc_abpw(text)
-    if advisory['advisory_status'] == 'unrecognized':
+    if advisory['advisory_status'] == 'unrecognized' and advisory['disturbance_status'] == 'unverified':
         return advisory
     validity = jtwc_abpw_validity(text)
     try:
