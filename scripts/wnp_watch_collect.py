@@ -103,11 +103,9 @@ def grib_index_url(cycle, model, stream, kind, step):
 
 def probe_index(cycle, model, stream, kind, step):
     product = fetch_text(grib_index_url(cycle, model, stream, kind, step))
-    product.pop('text', None) if product.get('status') != 'retrieved' else None
     if product['status'] != 'retrieved':
         return product
-    payload = fetch_text(product['url'])
-    text = payload.get('text', '')
+    text = product.pop('text', '')
     try:
         rows = [json.loads(line) for line in text.splitlines() if line.strip()]
         if not rows or not all(isinstance(row, dict) and
