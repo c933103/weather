@@ -200,6 +200,7 @@ class CollectionTests(unittest.TestCase):
             outlook = ('ABPW10 PGTW 210900\n'
                        'SUBJ/SIGNIFICANT TROPICAL WEATHER ADVISORY FOR THE WESTERN AND SOUTH\n'
                        'PACIFIC OCEANS/210600Z-220600ZNOV2026//\n'
+                       '1. WESTERN NORTH PACIFIC AREA (180 TO MALAY PENINSULA):\n'
                        'A. TROPICAL CYCLONE SUMMARY:\n'
                        '(1) TROPICAL STORM 31W (TEST) WAS LOCATED NEAR 20.0N 130.0E.\n'
                        'B. TROPICAL DISTURBANCE SUMMARY:\n')
