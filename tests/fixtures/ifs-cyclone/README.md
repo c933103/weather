@@ -18,3 +18,10 @@ The two Genevieve files are the table-35
 | [20261121180000-144h-enfo-tf.bufr](https://data.ecmwf.int/forecasts/20261121/18z/ifs/0p25/enfo/20261121180000-144h-enfo-tf.bufr) | 29 | `3f2bb6efd0f6d88d3010a77ea8a37d4fba92d81504a0b658b89622471423dab1` |
 | [tracks_12E_GENEVIEVE_2020082200.hres.bufr4](https://confluence.ecmwf.int/download/attachments/212445612/tracks_12E_GENEVIEVE_2020082200.hres.bufr4) | 1 | `e03c503a533d3064d88b91796da61d82f5c7d78510d8fe1b81d4da20f57b30d3` |
 | [tracks_12E_GENEVIEVE_2020082200.ens.bufr4](https://confluence.ecmwf.int/download/attachments/212445612/tracks_12E_GENEVIEVE_2020082200.ens.bufr4) | 1 | `c58e20ce8698821ace10ff2bdc355456005529571c099e5b831790face9b2e6e` |
+
+The AIFS sample `20261125060000-360h-enfo-tf-aifs-sample.bufr` is one
+unchanged message (zero-based bytes 118165 through 136989 inclusive) from
+[ECMWF 25 November 2026 06 UTC AIFS ENS cyclone tracks](https://data.ecmwf.int/forecasts/20261125/06z/aifs-ens/0p25/enfo/20261125060000-360h-enfo-tf.bufr).
+Source: ECMWF Open Data, CC BY 4.0. It tests the native AIFS wrapper and a
+360-hour horizon at a 06 UTC initialization. It does not constitute a full
+AIFS run or regional forecast.

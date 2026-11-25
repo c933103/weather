@@ -36,6 +36,10 @@ def package(source, destination):
                     for stream, record in streams.items()}
             for cycle, streams in snapshot['ecmwf']['ifs_cyclone'].items()},
     }
+    if 'aifs_ens_cyclone' in snapshot['ecmwf']:
+        result['ecmwf_aifs_ens_track_inventory'] = {
+            cycle: {k: record[k] for k in ('status', 'cycle_utc') if k in record}
+            for cycle, record in snapshot['ecmwf']['aifs_ens_cyclone'].items()}
     (destination / 'latest.json').write_text(
         json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 

@@ -33,6 +33,24 @@ def point(member, lead):
 
 
 class DecoderTests(unittest.TestCase):
+    def test_native_aifs_short_cycle_wrapper_and_long_horizon(self):
+        cycle = dt.datetime(2026, 11, 25, 6, tzinfo=dt.timezone.utc)
+        sample = (FIXTURES / '20261125060000-360h-enfo-tf-aifs-sample.bufr').read_bytes()
+        self.assertIn('/aifs-ens/0p25/enfo/', ifs.product_path(cycle, 'enfo', 'aifs-ens'))
+        self.assertIn('-360h-', ifs.product_path(cycle, 'enfo', 'aifs-ens'))
+        self.assertIn('-144h-', ifs.product_path(cycle, 'enfo', 'ifs'))
+        system, = ifs.decode_tracks(sample, cycle, 'enfo', 'aifs-ens')
+        self.assertEqual((system['storm_id'], len(system['members'])), ('74W', 35))
+        self.assertEqual(system['lead_hours'][-1], 360)
+        self.assertEqual(point(system['members'][0], 360)['valid_at_utc'],
+                         '2026-12-10T06:00:00+00:00')
+        with self.assertRaisesRegex(ValueError, 'template'):
+            ifs.decode_tracks(sample, cycle, 'enfo')
+        with self.assertRaisesRegex(ValueError, 'template'):
+            ifs.decode_tracks(capture(CYCLE, 'enfo'), CYCLE, 'enfo', 'aifs-ens')
+        with self.assertRaisesRegex(ValueError, 'differs from requested cycle'):
+            ifs.decode_tracks(sample, cycle.replace(hour=12), 'enfo', 'aifs-ens')
+
     def test_live_xavier_message_counts_positions_and_member_types(self):
         oper = ifs.decode_tracks(capture(CYCLE, 'oper'), CYCLE, 'oper')
         enfo = ifs.decode_tracks(capture(CYCLE, 'enfo'), CYCLE, 'enfo')
