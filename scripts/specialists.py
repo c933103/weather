@@ -46,7 +46,7 @@ def build_specialist_jobs(cities):
     for key, (_, lat, lon, _) in cities.items():
         jobs[f'{key}/snow_ensemble'] = ('https://ensemble-api.open-meteo.com/v1/ensemble', {
             'latitude': lat, 'longitude': lon, 'models': 'ecmwf_ifs025',
-            'hourly': 'snowfall', 'forecast_days': 3, 'timezone': 'GMT'}, True)
+            'hourly': 'snowfall', 'forecast_days': 3, 'past_days': 1, 'timezone': 'GMT'}, True)
     # Temperature members for the two chart cities: the 06:00 chart confidence
     # grades come from the ensemble spread of daily maximum temperature.
     for key in ('hong_kong', 'tokyo_minato'):
@@ -74,7 +74,10 @@ def build_specialist_jobs(cities):
         jobs[f'regional/{key}'] = ('https://seasonal-api.open-meteo.com/v1/seasonal', {
             'latitude': ','.join(str(v[0]) for v in grid), 'longitude': ','.join(str(v[1]) for v in grid),
             'models': 'ecmwf_ec46_ensemble_mean', 'hourly': ','.join(REGIONAL_FIELDS),
-            'forecast_days': 19, 'timezone': 'GMT', 'wind_speed_unit': 'ms', 'cell_selection': 'nearest'}, True)
+            # The native 18 UTC sample brackets the report's 21 UTC start,
+            # including when a late collection runs on the next UTC date.
+            'forecast_days': 19, 'past_days': 1, 'timezone': 'GMT', 'wind_speed_unit': 'ms',
+            'cell_selection': 'nearest'}, True)
     return jobs
 
 
