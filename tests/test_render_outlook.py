@@ -80,6 +80,41 @@ def calculated(**kw):
 
 
 class RenderOutlookTests(unittest.TestCase):
+    def test_daily_bufr_renders_regional_details_when_chart_fails_and_jtwc_is_quiet(self):
+        def point(when, lat, lon, lead=12):
+            return {'valid_at_utc': when, 'lead_hours': lead, 'latitude': lat, 'longitude': lon}
+
+        def tracks(storm, member, *points):
+            return {'status': 'available', 'tracks': [
+                {'storm_id': storm, 'members': [{'member_number': member, 'points': points}]}]}
+
+        cw = {'advisory_status': 'quiet', 'disturbance_status': 'none',
+              'ecmwf_cyclone_product': {'ok': False, 'http_status': 404},
+              'ifs_cyclone_tracks': {
+                  'oper': tracks('70W', 0, point('2026-11-08T00:00:00Z', 22.3, 114.2),
+                                 point('2026-11-08T06:00:00Z', 23.8, 121.0)),
+                  'enfo': tracks('72W', 37, point('2026-11-08T06:00:00Z', None, 121.0),
+                                 point('2026-11-08T09:00:00Z', 34.8, 138.4))}}
+        t3, t4 = render_outlook(raw(), calculated(cyclone_watch=cw))
+        self.assertTrue(t3.startswith('熱帯低気圧（JTWC）：なし'))
+        self.assertIn('HTTP 404', t4)
+        rows = {line.split('|')[1].strip(): line for line in t4.splitlines()[2:]}
+        self.assertIn('確認できた予報点に300km以内の中心なし', rows['IFS中心・香港'])
+        self.assertIn('oper 70W 約0km・11/08 15:00JST', rows['IFS中心・台湾'])
+        self.assertIn('IFS中心・ルソン海峡', rows)
+        self.assertIn('enfoの予報点が代表地点の300km以内', rows['IFS中心・東海道太平洋側'])
+        self.assertIn('72W・メンバー37 約10km・11/08 18:00JST', rows['IFS中心・東海道太平洋側'])
+        self.assertIn('発生確率の判定ではない', rows['IFS中心・判定範囲'])
+
+        # Never treat a missing ensemble as a clean pass or include an
+        # observation/forecast point before the report's start.
+        cw['ifs_cyclone_tracks']['enfo'] = {'status': 'unpublished'}
+        _, t4 = render_outlook(raw(), calculated(cyclone_watch=cw,
+                                                 window_start_utc='2026-11-08T09:00:00Z'))
+        self.assertEqual(t4.count('中心の接近は判定できず'), 4)
+        self.assertEqual(t4.count('enfo：ファイル未公開'), 4)
+        self.assertNotIn('70W', t4)
+
     def test_table3_reads_the_current_warning(self):
         t3, _t4 = render_outlook(raw(), calculated())
         lines = t3.strip().split('\n')
