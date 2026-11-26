@@ -888,6 +888,78 @@ def _ecmwf_legacy_analysis(cw):
     return None
 
 
+# Representative locations for the daily model-centre screen, not coastlines,
+# area-wide contours or thresholds for issuing alerts.
+_IFS_WATCH_POINTS = {
+    '香港': ((22.3, 114.2),),
+    '台湾': ((22.7, 120.3), (23.8, 121.0), (25.1, 121.6)),
+    'ルソン海峡': ((21.3, 120.9),),
+    '東海道太平洋側': ((34.6, 136.8), (34.7, 137.7), (34.9, 138.4),
+                       (35.2, 139.5), (34.9, 140.0)),
+}
+
+
+def _ifs_regional_rows(cw, as_of):
+    """Nearest actual forecast sample, separately for each IFS stream.
+
+    No interpolation across missing points, implicit ensemble probabilities,
+    storm-name matching, or extrapolation into an impact assessment.
+    """
+    sources = (cw or {}).get('ifs_cyclone_tracks') or {}
+    near = {}
+    latest = {}
+    for stream in ('oper', 'enfo'):
+        source = sources.get(stream) or {}
+        if source.get('status') != 'available':
+            continue
+        nearest = {}
+        for storm in source.get('tracks') or []:
+            for member in storm['members']:
+                for point in member['points']:
+                    when = _parse_iso(point['valid_at_utc'])
+                    lat, lon = point['latitude'], point['longitude']
+                    if (point['lead_hours'] <= 0 or when is None or when < as_of
+                            or lat is None or lon is None):
+                        continue
+                    latest[stream] = max(latest.get(stream, when), when)
+                    for label, refs in _IFS_WATCH_POINTS.items():
+                        distance = min(_haversine_km(lat, lon, a, b) for a, b in refs)
+                        candidate = (distance, when, storm['storm_id'], member['member_number'])
+                        if label not in nearest or candidate < nearest[label]:
+                            nearest[label] = candidate
+        near[stream] = nearest
+    if not sources:
+        return []
+    rows = []
+    for label in _IFS_WATCH_POINTS:
+        values = []
+        hits = []
+        for stream in ('oper', 'enfo'):
+            point = near.get(stream, {}).get(label)
+            if point is None:
+                status = (sources.get(stream) or {}).get('status')
+                detail = {'no_regional_tracks': '対象海域の抽出進路なし',
+                          'available': '基準時刻以降の有効な予報点なし'}.get(
+                              status, _BUFR_STATUS_LABELS.get(status, '取得状況不明'))
+                values.append(f'{stream}：{detail}')
+                continue
+            distance, when, storm_id, member = point
+            if distance <= 300:
+                hits.append(stream)
+            member_text = f'・メンバー{member}' if stream == 'enfo' else ''
+            values.append(f'{stream} {storm_id}{member_text} 約{_round10(distance)}km'
+                          f'・{when.astimezone(_JST):%m/%d %H:%M}JST'
+                          f'（系統の最終点 {latest[stream].astimezone(_JST):%m/%d %H:%M}JST）')
+        if hits:
+            analysis = f'{"・".join(hits)}の予報点が代表地点の300km以内'
+        elif any(label in v for v in near.values()):
+            analysis = '確認できた予報点に300km以内の中心なし'
+        else:
+            analysis = '中心の接近は判定できず'
+        rows.append(f'| IFS中心・{label} | {analysis} | {"｜".join(values)} |')
+    return rows
+
+
 def _ecmwf_values(cw):
     prod = (cw or {}).get('ecmwf_cyclone_product') or {}
     if prod.get('ok'):
@@ -1009,13 +1081,17 @@ def render_outlook(raw, calculated):
     calculated = calculated or {}
     anchor = _parse_iso(raw.get('collection_utc')) or datetime.now(timezone.utc)
     cw = calculated.get('cyclone_watch') or {}
+    # Keep the model-centre screen separate from official advisories. It is
+    # useful even on days when the official advisory lists no systems.
+    report_start = _parse_iso(calculated.get('window_start_utc')) or anchor
+    track_rows = _ifs_regional_rows(cw, max(anchor, report_start))
     systems = cw.get('systems') or []
     if systems:
         t3 = ['| 名称 | 現在位置・強度 | 移動 | 脅威・最接近 |', '|---|---|---|---|']
         t3 += [_system_row(raw, anchor, s) for s in systems]
         table3 = '\n'.join(t3) + '\n'
     elif cw.get('advisory_status') == 'quiet':
-        table3 = '熱帯低気圧：なし\n'
+        table3 = '熱帯低気圧（JTWC）：なし\n' if track_rows else '熱帯低気圧：なし\n'
     else:
         table3 = '熱帯低気圧：JTWCの情報を確認できず\n'
     disturbance_status = cw.get('disturbance_status')
@@ -1036,4 +1112,8 @@ def render_outlook(raw, calculated):
           f"| 地域災害 | {_regional_hazard(calculated)[0]} | {_regional_hazard(calculated)[1]} |",
           f"| 宇宙天気 | {_space_analysis(sw)} | {_space_values(sw)} |",
           f"| ECMWF検証 | {_ecmwf_analysis(cw)} | {_ecmwf_values(cw)} |"]
+    if track_rows:
+        t4.extend(track_rows)
+        t4.append('| IFS中心・判定範囲 | 予報中心と代表地点の距離のみ。'
+                  '陸上の影響・警報・発生確率の判定ではない | 未取得の予報は対象外 |')
     return table3, '\n'.join(t4) + '\n'
