@@ -804,8 +804,11 @@ def build_jobs(day):
         jobs[f'{key}/ifs_monsoon'] = ('https://api.open-meteo.com/v1/forecast', {
             **coord, 'models': 'ecmwf_ifs', 'hourly': ','.join(MONSOON_FIELDS),
             'forecast_days': 10, 'past_days': 1, 'wind_speed_unit': 'ms'}, True)
+        # The pinned 06 JST report starts on the preceding UTC day if
+        # collecting after midnight. Keep its original hourly window.
         jobs[f'{key}/air'] = ('https://air-quality-api.open-meteo.com/v1/air-quality', {
-            **coord, 'domains': 'cams_global', 'hourly': ','.join(AIR_FIELDS), 'forecast_days': 3}, True)
+            **coord, 'domains': 'cams_global', 'hourly': ','.join(AIR_FIELDS),
+            'forecast_days': 3, 'past_days': 1}, True)
         # NOAA GFS as the independent second model for every city: cross-check
         # for the ECMWF IFS values and the frost limb (soil temperature).
         jobs[f'{key}/gfs'] = ('https://api.open-meteo.com/v1/forecast', {

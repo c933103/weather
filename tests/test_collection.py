@@ -139,5 +139,63 @@ class MonsoonFeedJobTests(unittest.TestCase):
                                  'wind_gusts_10m']))
 
 
+class DelayedReportLookbackTests(unittest.TestCase):
+    def test_late_edition_uses_numeric_prior_day_air_snow_and_ec46_bracket(self):
+        from collect import AIR_FIELDS, parse_time
+        from specialists import REGIONAL_FIELDS, REGIONS, extract_region, extract_snow, regional_grid_points
+        day = dt.date(2026, 11, 26)
+        start = dt.datetime(2026, 11, 25, 21, tzinfo=UTC)
+        midnight = start + dt.timedelta(hours=3)
+        end = start + dt.timedelta(hours=384)
+        jobs = build_jobs(day)
+
+        # Mirror the Nov 26 archive: native UTC responses were forward-only.
+        # The provider honors past_days with numeric values, not merely times.
+        def payload(params, fields, pace):
+            t0 = midnight - dt.timedelta(days=params.get('past_days', 0))
+            size = (params['forecast_days'] + params.get('past_days', 0)) * 24 // pace
+            return {'time': [(t0 + dt.timedelta(hours=i * pace)).isoformat() for i in range(size)],
+                    **{field: [0.5] * size for field in fields}}
+        for city in CITIES:
+            with self.subTest(city=city):
+                air = jobs[f'{city}/air'][1]
+                self.assertEqual(air['domains'], 'cams_global')
+                self.assertEqual(audit_hourly(payload(dict(air, past_days=0), AIR_FIELDS, 1),
+                                              AIR_FIELDS, start)['timestamp_slots'], 21)
+                recovered = payload(air, AIR_FIELDS, 1)
+                self.assertTrue(audit_hourly(recovered, AIR_FIELDS, start)['ready'])
+                recovered[AIR_FIELDS[0]][21] = None
+                self.assertFalse(audit_hourly(recovered, AIR_FIELDS, start)['ready'])
+
+                snow = jobs[f'{city}/snow_ensemble'][1]
+                self.assertEqual(snow['models'], 'ecmwf_ifs025')
+                fields = ['snowfall'] + [f'snowfall_member{i:02d}' for i in range(1, 51)]
+                def snow_check(params, fields):
+                    return extract_snow({'ok': True, 'response': {'hourly': payload(params, fields, 1)}},
+                                        start, audit_hourly)['check']
+                self.assertEqual(snow_check(dict(snow, past_days=0), fields)['timestamp_slots'], 22)
+                self.assertTrue(snow_check(snow, fields)['ready'])
+                self.assertFalse(snow_check(snow, fields[:-1])['ready'])
+
+        for region in REGIONS:
+            with self.subTest(region=region):
+                ec46 = jobs[f'regional/{region}'][1]
+                self.assertEqual(ec46['models'], 'ecmwf_ec46_ensemble_mean')
+                def grid(params):
+                    return [{'latitude': lat, 'longitude': lon, 'hourly': payload(params, REGIONAL_FIELDS, 6)}
+                            for lat, lon in regional_grid_points(region)]
+                missed = extract_region(region, {'ok': True, 'response': grid(dict(ec46, past_days=0))},
+                                        start, end, parse_time, numeric)
+                self.assertFalse(missed['ready'])
+                self.assertTrue(all(all(row['fields'].values()) and not row['time_coverage']
+                                    for row in missed['checks']))
+                response = grid(ec46)
+                self.assertTrue(extract_region(region, {'ok': True, 'response': response},
+                                               start, end, parse_time, numeric)['ready'])
+                response[0]['hourly']['pressure_msl'][3] = None  # 18 UTC bracket
+                self.assertFalse(extract_region(region, {'ok': True, 'response': response},
+                                                start, end, parse_time, numeric)['ready'])
+
+
 if __name__ == '__main__':
     unittest.main()
