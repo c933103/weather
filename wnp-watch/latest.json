@@ -1,6 +1,6 @@
 {
   "schema": "wnp-watch-source-index/v1",
-  "collected_at_utc": "2026-11-27T00:33:42.538512Z",
+  "collected_at_utc": "2026-11-27T13:47:31.376904Z",
   "assessment_status": "SOURCE_COLLECTION_ONLY; NO WEATHER CLEARANCE",
   "regions": [
     "prd",
@@ -11,25 +11,35 @@
   "payload": {
     "relative_path": "latest.json.gz",
     "encoding": "gzip",
-    "sha256": "d69e28b0c661d82ffd3033c846393c55d3f32c44c00f0e46f56109cbb82c50d5",
-    "uncompressed_bytes": 39411631,
-    "compressed_sha256": "c9b46139bfb7247f98a624a0cf6b0af65a619c90ee0303e1e5eb8236e1b05d14",
-    "compressed_bytes": 729082
+    "sha256": "d01b2bc8b9a2a74bfda8ae2d0863916b5b50f2eacc3769e2fe6359bb0ab3e8ed",
+    "uncompressed_bytes": 37927368,
+    "compressed_sha256": "9b5b87f61ac8dfe5d61e9ba9f9d409d9e9f94df525b0b325f90e338f9344e169",
+    "compressed_bytes": 706178
   },
   "jtwc": {
     "status": "advisory_timestamp_checked",
-    "issued_at_utc": "2026-11-26T06:00:00Z",
+    "issued_at_utc": "2026-11-27T06:00:00Z",
     "url": "https://www.metoc.navy.mil/jtwc/products/abpwweb.txt",
-    "sha256": "7fbbcd167b9bc58a584936bb0c98acdeb698ae3378bcb6e172f4eb533736989b"
+    "sha256": "eb87cf0615112641439d5c6e6ee40604622bb94aeb5094dc307432bd2e7b075e"
   },
   "ecmwf_ifs_track_inventory": {
-    "2026-11-27T00:00:00Z": {
+    "2026-11-27T12:00:00Z": {
       "enfo": {
         "status": "PENDING",
-        "cycle_utc": "2026-11-27T00:00:00Z"
+        "cycle_utc": "2026-11-27T12:00:00Z"
       },
       "oper": {
         "status": "PENDING",
+        "cycle_utc": "2026-11-27T12:00:00Z"
+      }
+    },
+    "2026-11-27T00:00:00Z": {
+      "enfo": {
+        "status": "available",
+        "cycle_utc": "2026-11-27T00:00:00Z"
+      },
+      "oper": {
+        "status": "available",
         "cycle_utc": "2026-11-27T00:00:00Z"
       }
     },
@@ -41,31 +51,21 @@
       "oper": {
         "status": "available",
         "cycle_utc": "2026-11-26T12:00:00Z"
-      }
-    },
-    "2026-11-26T00:00:00Z": {
-      "enfo": {
-        "status": "available",
-        "cycle_utc": "2026-11-26T00:00:00Z"
-      },
-      "oper": {
-        "status": "available",
-        "cycle_utc": "2026-11-26T00:00:00Z"
       }
     }
   },
   "ecmwf_aifs_ens_track_inventory": {
-    "2026-11-27T00:00:00Z": {
+    "2026-11-27T12:00:00Z": {
       "status": "PENDING",
+      "cycle_utc": "2026-11-27T12:00:00Z"
+    },
+    "2026-11-27T06:00:00Z": {
+      "status": "available",
+      "cycle_utc": "2026-11-27T06:00:00Z"
+    },
+    "2026-11-27T00:00:00Z": {
+      "status": "available",
       "cycle_utc": "2026-11-27T00:00:00Z"
-    },
-    "2026-11-26T18:00:00Z": {
-      "status": "available",
-      "cycle_utc": "2026-11-26T18:00:00Z"
-    },
-    "2026-11-26T12:00:00Z": {
-      "status": "available",
-      "cycle_utc": "2026-11-26T12:00:00Z"
     }
   },
   "publication": {
@@ -73,9 +73,9 @@
     "event": "schedule",
     "repository": "c933103/weather",
     "workflow": ".github/workflows/wnp-watch-sources.yml",
-    "run_id": "45917418315",
+    "run_id": "46010127921",
     "run_attempt": "1",
-    "collector_commit": "8680c7372ce417c7afaff7088905a16026b924c5",
-    "run_url": "https://github.com/c933103/weather/actions/runs/45917418315/attempts/1"
+    "collector_commit": "294954b60971875651c411d61c139146c0b80e85",
+    "run_url": "https://github.com/c933103/weather/actions/runs/46010127921/attempts/1"
   }
 }
