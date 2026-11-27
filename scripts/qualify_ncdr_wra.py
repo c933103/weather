@@ -1,10 +1,12 @@
 """Evidence-only NCDR/WRA adapter qualification; never publishes a forecast."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
+import math
 import json
 import re
 import time
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from xml.etree import ElementTree as ET
@@ -132,6 +134,20 @@ class NoRedirects(HTTPRedirectHandler):
         return None
 
 
+def retry_delay(value, now):
+    """Honor server backoff without keeping the qualification runner idle indefinitely."""
+    try:
+        if value is None:
+            delay = 20
+        elif value.isdigit():
+            delay = int(value)
+        else:
+            delay = math.ceil((parsedate_to_datetime(value) - now).total_seconds())
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return max(1, delay) if delay <= 60 else None
+
+
 def get(url, *, is_cap=False):
     if (is_cap and not cap_url(url)) or (not is_cap and url not in {ACTIVE, ARCHIVE, TAIPEI}):
         raise ValueError("unexpected source URL")
@@ -150,9 +166,16 @@ def get(url, *, is_cap=False):
                 if len(data) > MAX_BYTES:
                     raise ValueError("payload too large")
                 return data, {"mime": mime, "fetched_utc": datetime.now(timezone.utc).isoformat()}
-        except (URLError, TimeoutError):
+        except HTTPError as error:
+            with error:
+                delay = retry_delay(error.headers.get("Retry-After"), datetime.now(timezone.utc))
+                if error.code not in {429, 503} or attempt or delay is None:
+                    raise RuntimeError(f"NCDR HTTP {error.code}: {url}") from None
+                print(f"NCDR HTTP {error.code} for {url}; retrying once after {delay}s", flush=True)
+            time.sleep(delay)
+        except (URLError, TimeoutError) as error:
             if attempt:
-                raise
+                raise RuntimeError(f"NCDR transport failure: {url}") from error
             time.sleep(1)
 
 

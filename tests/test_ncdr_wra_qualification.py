@@ -5,7 +5,7 @@ import unittest
 from xml.etree.ElementTree import ParseError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from qualify_ncdr_wra import ROOT, SENDER, clock, parse_atom, parse_cap, taipei_as_of
+from qualify_ncdr_wra import ROOT, SENDER, clock, parse_atom, parse_cap, retry_delay, taipei_as_of
 
 PREFIX = "WRA_FloodWarn_202606041"
 T = "2026-06-04T"
@@ -74,3 +74,12 @@ class TestNcdr(unittest.TestCase):
         self.assertEqual(list(parse_atom(stale, now)["wra_urls"].values()), [url])
         with self.assertRaises(ValueError):
             parse_atom(b"<feed/>", now)
+
+
+    def test_http_backoff_is_bounded_and_respects_server(self):
+        now = clock("2026-11-27T03:00:00Z")
+        self.assertEqual(retry_delay("45", now), 45)
+        self.assertEqual(retry_delay("Fri, 27 Nov 2026 03:00:13 GMT", now), 13)
+        self.assertEqual(retry_delay(None, now), 20)
+        self.assertIsNone(retry_delay("120", now))
+        self.assertIsNone(retry_delay("invalid", now))
