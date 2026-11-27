@@ -1,0 +1,21 @@
+name: Qualify NCDR WRA flood evidence
+on:
+  pull_request:
+    paths:
+      - 'scripts/qualify_ncdr_wra.py'
+      - 'tests/test_ncdr_wra_qualification.py'
+      - '.github/workflows/ncdr-wra-qualification.yml'
+permissions:
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate contract and CAP lifecycle fixtures
+        run: python3 -m unittest discover -s tests -p 'test_ncdr_wra_qualification.py' -v
+      - name: Probe live official sources without publishing
+        run: python3 scripts/qualify_ncdr_wra.py
