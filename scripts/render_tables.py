@@ -715,6 +715,12 @@ def _monsoon_analysis(cw, digest, cities=None):
     return '。'.join(parts)
 
 
+def _regional_coverage_suffix(entry):
+    if entry.get('coverage_complete') is False:
+        return f"（欠測あり {entry['samples']}/{entry['expected_samples']}）"
+    return ''
+
+
 def _monsoon_values(cw, digest, cities=None):
     ub = (digest or {}).get('ulaanbaatar') or {}
     parts = []
@@ -722,7 +728,9 @@ def _monsoon_values(cw, digest, cities=None):
         seg = f"UB域 格子最大 {fmt(ub['max_pressure_hpa'], 0)}hPa"
         if ub.get('tendency_hpa') is not None:
             seg += f"・72h傾向 {ub['tendency_hpa']:+.1f}hPa"
-        parts.append(seg)
+        parts.append(seg + _regional_coverage_suffix(ub))
+    elif ub.get('coverage_complete') is False:
+        parts.append('UB域 格子値なし' + _regional_coverage_suffix(ub))
     if (cw or {}).get('monsoon_mentions'):
         parts.append(f"ABPW言及 {len(cw['monsoon_mentions'])}行")
     segs = []
@@ -754,17 +762,21 @@ ETC_AREAS = (('manchuria', '満洲'), ('sea_of_japan', '日本海'),
 
 def _etc_analysis(digest):
     mins = []
+    incomplete = False
     for key, label in ETC_AREAS:
         e = (digest or {}).get(key) or {}
         if e.get('min_pressure_hpa') is not None:
             mins.append((e['min_pressure_hpa'], label))
+        incomplete |= e.get('coverage_complete') is False
     if not mins:
-        return '―'
+        return '格子データ不足で未評価' if incomplete else '―'
     deepest, label = min(mins)
     if deepest < 1000:
         return f"{label}に発達した低気圧の兆候（格子値）"
     if deepest < 1008:
         return f"{label}に低圧部の兆候（格子値）"
+    if incomplete:
+        return '格子データに欠測があり、発達した低気圧の有無は未評価'
     return '発達した低気圧の兆候なし（格子値）'
 
 
@@ -773,11 +785,14 @@ def _etc_values(digest):
     for key, label in ETC_AREAS:
         e = (digest or {}).get(key) or {}
         if e.get('min_pressure_hpa') is None:
+            if e.get('coverage_complete') is False:
+                parts.append(f'{label} 格子値なし' + _regional_coverage_suffix(e))
             continue
         at = e.get('min_at_utc') or ''
         when = f"{at[5:7]}/{at[8:10]} {at[11:16]}UTC" if len(at) >= 16 else at
         parts.append(f"{label} 格子最小 {fmt(e['min_pressure_hpa'], 0)}hPa"
-                     f"（{_latlon(e.get('latitude'), e.get('longitude'))}・{when}）")
+                     f"（{_latlon(e.get('latitude'), e.get('longitude'))}・{when}）"
+                     + _regional_coverage_suffix(e))
     return '・'.join(parts) if parts else '―'
 
 

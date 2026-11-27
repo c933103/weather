@@ -3,6 +3,7 @@
 Analysis first (user correction, 2026-11-08): Table 3 reads the current
 JTWC warning text, Table 4 separates 分析 from 数値・根拠.
 """
+import datetime as dt
 import sys
 import tempfile
 import unittest
@@ -484,8 +485,9 @@ class RegionalDigestTests(unittest.TestCase):
             return {'latitude': lat, 'longitude': lon,
                     'hourly': {'time': times,
                                'pressure_msl': [base + i for i in range(12)]}}
-        return {'regional_forecasts': {
-            'ulaanbaatar': {'grid_forecasts': [point(47.9, 106.9, 1040.0)]},
+        return {'window_start_utc': '2026-11-07T00:00:00+00:00', 'regional_forecasts': {
+            'ulaanbaatar': {'requested_points': [(47.9, 106.9)],
+                            'grid_forecasts': [point(47.9, 106.9, 1040.0)]},
             'manchuria': {'grid_forecasts': [point(44.1, 126.9, 1005.0)]},
             'sea_of_japan': {'grid_forecasts': [point(38.2, 133.5, 1010.0)]}}}
 
@@ -519,7 +521,7 @@ class RegionalDigestTests(unittest.TestCase):
             return {'latitude': lat, 'longitude': lon,
                     'hourly': {'time': times,
                                'pressure_msl': [base + i for i in range(12)]}}
-        raw = {'regional_forecasts': {
+        raw = {'window_start_utc': '2026-11-07T00:00:00+00:00', 'regional_forecasts': {
             'east_china_sea': {'grid_forecasts': [point(30.5, 127.0, 1002.0)]},
             'tokaido': {'grid_forecasts': [point(34.0, 138.0, 1008.0)]},
             'okhotsk': {'grid_forecasts': [point(50.0, 149.0, 990.0)]}}}
@@ -527,6 +529,77 @@ class RegionalDigestTests(unittest.TestCase):
         self.assertEqual(d['east_china_sea']['min_pressure_hpa'], 1002.0)
         self.assertEqual(d['tokaido']['min_pressure_hpa'], 1008.0)
         self.assertEqual(d['okhotsk']['min_pressure_hpa'], 990.0)
+
+    def _window(self):
+        start = dt.datetime(2026, 11, 26, 21, tzinfo=dt.timezone.utc)
+        offsets = [-21, -15, -9, -3, *range(3, 72, 6), 72, 75]
+        def point(values, lat, lon):
+            return {'latitude': lat, 'longitude': lon, 'hourly': {
+                'time': [(start + dt.timedelta(hours=h)).isoformat() for h in offsets],
+                'pressure_msl': [values(h) for h in offsets]}}
+        return {'window_start_utc': start.isoformat(), 'regional_forecasts': {
+            'okhotsk': {'requested_points': [(56, 156)],
+                         'grid_forecasts': [point(
+                             lambda h: 930 if h < 0 or h >= 72 else (974.4 if h == 69 else 1010), 56, 156)]},
+            'ulaanbaatar': {'requested_points': [(48, 107)],
+                            'grid_forecasts': [point(
+                                lambda h: 1100 if h < 0 or h >= 72 else (1030 if h < 24 else 1037), 48, 107)]}}}
+
+    def test_edition_window_excludes_elapsed_and_end_points_and_keeps_late_low(self):
+        digest = regional_digest(self._window())
+        o = digest['okhotsk']
+        self.assertEqual(o['min_pressure_hpa'], 974.4)
+        self.assertEqual(o['min_at_utc'], '2026-11-29T18:00:00+00:00')
+        self.assertEqual(o['window_end_utc'], '2026-11-29T21:00:00+00:00')
+        self.assertEqual((o['samples'], o['expected_samples'], o['coverage_complete']), (12, 12, True))
+        ub = digest['ulaanbaatar']
+        self.assertEqual(ub['max_pressure_hpa'], 1037.0)
+        self.assertEqual(ub['tendency_hpa'], 7.0)
+
+    def test_exact_edges_and_partial_grid_have_explicit_coverage(self):
+        edition = self._raw()
+        reg = edition['regional_forecasts']
+        reg['ulaanbaatar']['grid_forecasts'][0]['hourly']['pressure_msl'][-1] = None
+        # Also prove the included start and excluded exact end at native times.
+        sea = reg['sea_of_japan']
+        sea['requested_points'] = [(38.2, 133.5), (39.0, 133.5)]
+        sea['grid_forecasts'][0]['hourly']['time'].append('2026-11-10T00:00')
+        sea['grid_forecasts'][0]['hourly']['pressure_msl'].append(920.0)
+        digest = regional_digest(edition)
+        self.assertEqual(digest['sea_of_japan']['min_at_utc'], '2026-11-07T00:00:00+00:00')
+        self.assertEqual(digest['sea_of_japan']['min_pressure_hpa'], 1010.0)
+        self.assertEqual(digest['sea_of_japan']['samples'], 12)
+        self.assertEqual(digest['sea_of_japan']['expected_samples'], 24)
+        self.assertFalse(digest['sea_of_japan']['coverage_complete'])
+        self.assertNotIn('tendency_hpa', digest['ulaanbaatar'])
+        calc = calculated()
+        calc['regional_digest'] = digest
+        _t3, table = render_outlook(raw(), calc)
+        self.assertIn('欠測あり 12/24', table)
+        self.assertIn('欠測あり 11/12', table)
+        self.assertNotIn('72h傾向', table)
+        self.assertNotIn('発達した低気圧の兆候なし', table)
+
+    def test_duplicate_slots_do_not_mask_missing_or_publish_conflicting_value(self):
+        edition = self._window()
+        block = edition['regional_forecasts']['okhotsk']
+        hours = block['grid_forecasts'][0]['hourly']
+        slot = '2026-11-27T00:00:00+00:00'
+        hours['time'].append(slot)
+        hours['pressure_msl'].append(900.0)
+        result = regional_digest(edition)['okhotsk']
+        self.assertEqual(result['samples'], 11)
+        self.assertFalse(result['coverage_complete'])
+        self.assertEqual(result['min_pressure_hpa'], 974.4)
+
+    def test_all_grid_points_unavailable_is_not_no_extratropical_signal(self):
+        edition = self._window()
+        edition['regional_forecasts']['okhotsk']['grid_forecasts'] = []
+        calc = calculated()
+        calc['regional_digest'] = regional_digest(edition)
+        _t3, table = render_outlook(raw(), calc)
+        self.assertIn('格子データ不足で未評価', table)
+        self.assertIn('オホーツク 格子値なし（欠測あり 0/12）', table)
 
 
 if __name__ == '__main__':
