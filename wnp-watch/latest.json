@@ -1,6 +1,6 @@
 {
   "schema": "wnp-watch-source-index/v1",
-  "collected_at_utc": "2026-11-26T13:50:27.609674Z",
+  "collected_at_utc": "2026-11-27T00:33:42.538512Z",
   "assessment_status": "SOURCE_COLLECTION_ONLY; NO WEATHER CLEARANCE",
   "regions": [
     "prd",
@@ -11,10 +11,10 @@
   "payload": {
     "relative_path": "latest.json.gz",
     "encoding": "gzip",
-    "sha256": "23b82ad039d343f60bb03d4712f5c42bc3a3c3fe50338430ca2fa8827789f333",
-    "uncompressed_bytes": 46413497,
-    "compressed_sha256": "7faff604ca84ad2bb55e9afa91a1e01bd59b0c4cbe0e20335eb5e02d553f3547",
-    "compressed_bytes": 876079
+    "sha256": "d69e28b0c661d82ffd3033c846393c55d3f32c44c00f0e46f56109cbb82c50d5",
+    "uncompressed_bytes": 39411631,
+    "compressed_sha256": "c9b46139bfb7247f98a624a0cf6b0af65a619c90ee0303e1e5eb8236e1b05d14",
+    "compressed_bytes": 729082
   },
   "jtwc": {
     "status": "advisory_timestamp_checked",
@@ -23,13 +23,23 @@
     "sha256": "7fbbcd167b9bc58a584936bb0c98acdeb698ae3378bcb6e172f4eb533736989b"
   },
   "ecmwf_ifs_track_inventory": {
-    "2026-11-26T12:00:00Z": {
+    "2026-11-27T00:00:00Z": {
       "enfo": {
         "status": "PENDING",
-        "cycle_utc": "2026-11-26T12:00:00Z"
+        "cycle_utc": "2026-11-27T00:00:00Z"
       },
       "oper": {
         "status": "PENDING",
+        "cycle_utc": "2026-11-27T00:00:00Z"
+      }
+    },
+    "2026-11-26T12:00:00Z": {
+      "enfo": {
+        "status": "available",
+        "cycle_utc": "2026-11-26T12:00:00Z"
+      },
+      "oper": {
+        "status": "available",
         "cycle_utc": "2026-11-26T12:00:00Z"
       }
     },
@@ -41,31 +51,21 @@
       "oper": {
         "status": "available",
         "cycle_utc": "2026-11-26T00:00:00Z"
-      }
-    },
-    "2026-11-25T12:00:00Z": {
-      "enfo": {
-        "status": "available",
-        "cycle_utc": "2026-11-25T12:00:00Z"
-      },
-      "oper": {
-        "status": "available",
-        "cycle_utc": "2026-11-25T12:00:00Z"
       }
     }
   },
   "ecmwf_aifs_ens_track_inventory": {
-    "2026-11-26T12:00:00Z": {
+    "2026-11-27T00:00:00Z": {
       "status": "PENDING",
+      "cycle_utc": "2026-11-27T00:00:00Z"
+    },
+    "2026-11-26T18:00:00Z": {
+      "status": "available",
+      "cycle_utc": "2026-11-26T18:00:00Z"
+    },
+    "2026-11-26T12:00:00Z": {
+      "status": "available",
       "cycle_utc": "2026-11-26T12:00:00Z"
-    },
-    "2026-11-26T06:00:00Z": {
-      "status": "available",
-      "cycle_utc": "2026-11-26T06:00:00Z"
-    },
-    "2026-11-26T00:00:00Z": {
-      "status": "available",
-      "cycle_utc": "2026-11-26T00:00:00Z"
     }
   },
   "publication": {
@@ -73,9 +73,9 @@
     "event": "schedule",
     "repository": "c933103/weather",
     "workflow": ".github/workflows/wnp-watch-sources.yml",
-    "run_id": "45833028351",
+    "run_id": "45917418315",
     "run_attempt": "1",
     "collector_commit": "8680c7372ce417c7afaff7088905a16026b924c5",
-    "run_url": "https://github.com/c933103/weather/actions/runs/45833028351/attempts/1"
+    "run_url": "https://github.com/c933103/weather/actions/runs/45917418315/attempts/1"
   }
 }
