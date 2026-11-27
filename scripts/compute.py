@@ -1070,66 +1070,73 @@ def compute_city(city, start, end):
 
 
 def regional_digest(raw):
-    """Mechanical regional-grid statistics behind the outlook table.
+    """Table 4 pressure statistics for the edition's first 72 hours.
 
-    Ulaanbaatar: the grid's maximum MSLP and the pooled tendency over the
-    first 72 hours of the regional series (the Siberian High segment of
-    the monsoon row). The extratropical-cyclone grids — Manchuria and the
-    Sea of Japan (continental / winter development), the East China Sea
-    and the Tokaido Pacific (south-coast lows, late winter to spring, and
-    baiu-front lows), and the Okhotsk / Kurils (northern lows): each
-    grid's minimum MSLP in the same span, with the grid point and valid
-    time — the extratropical-cyclone row's floor, a grid statistic only,
-    never a cyclone identification. (Grid set widened 2026-11-12 at the
-    user's direction: the two winter grids alone missed the seasons and
-    corridors in which lows develop south of Japan.)
+    Use native six-hour UTC stamps in [edition start, edition start + 72h)
+    from each accepted point of the collected regional pressure grids.
+    Extrema are grid values, not cyclone identities. Compare the fixed
+    first and last 24 hours for the Ulaanbaatar tendency only when both
+    sets contain all expected pressure samples.
     """
+    start = parse_time(raw['window_start_utc'])
+    end = start + dt.timedelta(hours=72)
+    step = dt.timedelta(hours=6)
+    first_tick = start.replace(hour=start.hour // 6 * 6, minute=0, second=0, microsecond=0)
+    if first_tick < start:
+        first_tick += step
+    stamps = {first_tick + step * i for i in range(12)}
     reg = raw.get('regional_forecasts') or {}
-
-    def samples(area):
-        rows = []
-        block = reg.get(area) or {}
-        checks = block.get('checks') or []
-        for point_i, point in enumerate(block.get('grid_forecasts') or []):
-            # Invalid geographic points remain in the raw artifact but
-            # cannot generate a region-labelled pressure minimum.
-            if point_i < len(checks) and checks[point_i].get('spatial_ready') is False:
-                continue
-            hourly = point.get('hourly') or {}
-            for t, v in zip(hourly.get('time') or [], hourly.get('pressure_msl') or []):
-                if numeric(v):
-                    rows.append((parse_time(t), float(v),
-                                 point.get('latitude'), point.get('longitude')))
-        return sorted(rows)
-
     digest = {}
     for area in ('ulaanbaatar', 'manchuria', 'sea_of_japan',
                  'east_china_sea', 'tokaido', 'okhotsk'):
-        rows = samples(area)
+        if area not in reg:
+            continue
+        block = reg[area] or {}
+        points = len(block.get('requested_points') or []) or 9  # collector's 3×3 grid
+        checks = block.get('checks') or []
+        rows = []
+        for point_i, point in enumerate((block.get('grid_forecasts') or [])[:points]):
+            if point_i < len(checks) and checks[point_i].get('spatial_ready') is False:
+                continue
+            hourly = point.get('hourly') or {}
+            pressure, duplicates = {}, set()
+            for t, v in zip(hourly.get('time') or [], hourly.get('pressure_msl') or []):
+                try:
+                    stamp = parse_time(t)
+                except (TypeError, ValueError, OverflowError, OSError):
+                    continue
+                if stamp not in stamps:
+                    continue
+                if stamp in pressure:
+                    duplicates.add(stamp)
+                pressure[stamp] = v
+            rows.extend((t, float(v), point.get('latitude'), point.get('longitude'))
+                        for t, v in pressure.items() if t not in duplicates and numeric(v))
+        rows.sort(key=lambda r: r[0])
+        expected = points * len(stamps)
+        entry = {'span_hours': 72, 'window_start_utc': start.isoformat(),
+                 'window_end_utc': end.isoformat(), 'samples': len(rows),
+                 'expected_samples': expected, 'coverage_complete': len(rows) == expected}
+        digest[area] = entry
         if not rows:
             continue
-        start = rows[0][0]
-        rows = [r for r in rows if r[0] < start + dt.timedelta(hours=72)]
-        if not rows:
-            continue
-        entry = {'span_hours': 72, 'samples': len(rows)}
         if area == 'ulaanbaatar':
             peak = max(rows, key=lambda r: r[1])
             entry['max_pressure_hpa'] = round(peak[1], 1)
             entry['max_at_utc'] = peak[0].isoformat()
-            first = [r[1] for r in rows if r[0] < start + dt.timedelta(hours=24)]
-            last_start = max(r[0] for r in rows) - dt.timedelta(hours=24)
-            last = [r[1] for r in rows if r[0] > last_start]
-            if first and last:
+            first_end = start + dt.timedelta(hours=24)
+            last_start = end - dt.timedelta(hours=24)
+            first = [r[1] for r in rows if r[0] < first_end]
+            last = [r[1] for r in rows if r[0] >= last_start]
+            if len(first) == len(last) == points * 4:
                 entry['tendency_hpa'] = round(
-                    sum(last) / len(last) - sum(first) / len(first), 1)
+                    statistics.mean(last) - statistics.mean(first), 1)
         else:
             low = min(rows, key=lambda r: r[1])
             entry['min_pressure_hpa'] = round(low[1], 1)
             entry['min_at_utc'] = low[0].isoformat()
             entry['latitude'] = low[2]
             entry['longitude'] = low[3]
-        digest[area] = entry
     return digest
 
 
