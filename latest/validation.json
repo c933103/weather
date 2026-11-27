@@ -1,7 +1,7 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-26T02:46:53.951910+00:00",
-  "target_date_jst": "2026-11-26",
+  "generated_at_utc": "2026-11-27T02:48:09.996098+00:00",
+  "target_date_jst": "2026-11-27",
   "cities": {
     "Hong Kong": {
       "temperature": {
@@ -21,12 +21,12 @@
         "detail": "24/24 hourly values in the window"
       },
       "uv": {
-        "status": "missing",
-        "detail": "uv_index not ready for the window"
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
       },
       "dust": {
-        "status": "missing",
-        "detail": "dust not ready for the window"
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
       },
       "wbgt": {
         "status": "ok",
@@ -41,12 +41,12 @@
         "detail": "(start,end] preceding-hour accumulations, 24/24"
       },
       "snow": {
-        "status": "caution",
-        "detail": "independent snowfall probability unavailable; snowfall amount alone must not be read as the snow risk"
+        "status": "ok",
+        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
       },
       "aqi": {
-        "status": "missing",
-        "detail": "AQI not ready"
+        "status": "ok",
+        "detail": "leading and second pollutants are read at the worst-AQI hour itself"
       },
       "fog": {
         "status": "ok",
@@ -91,12 +91,12 @@
         "detail": "24/24 hourly values in the window"
       },
       "uv": {
-        "status": "missing",
-        "detail": "uv_index not ready for the window"
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
       },
       "dust": {
-        "status": "missing",
-        "detail": "dust not ready for the window"
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
       },
       "wbgt": {
         "status": "ok",
@@ -111,12 +111,12 @@
         "detail": "(start,end] preceding-hour accumulations, 24/24"
       },
       "snow": {
-        "status": "caution",
-        "detail": "independent snowfall probability unavailable; snowfall amount alone must not be read as the snow risk"
+        "status": "ok",
+        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
       },
       "aqi": {
-        "status": "missing",
-        "detail": "AQI not ready"
+        "status": "ok",
+        "detail": "leading and second pollutants are read at the worst-AQI hour itself"
       },
       "fog": {
         "status": "ok",
@@ -173,12 +173,12 @@
         "detail": "24/24 hourly values in the window"
       },
       "uv": {
-        "status": "missing",
-        "detail": "uv_index not ready for the window"
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
       },
       "dust": {
-        "status": "missing",
-        "detail": "dust not ready for the window"
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
       },
       "wbgt": {
         "status": "ok",
@@ -193,16 +193,16 @@
         "detail": "(start,end] preceding-hour accumulations, 24/24"
       },
       "snow": {
-        "status": "caution",
-        "detail": "independent snowfall probability unavailable; snowfall amount alone must not be read as the snow risk"
+        "status": "ok",
+        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
       },
       "aqi": {
-        "status": "missing",
-        "detail": "AQI not ready"
+        "status": "ok",
+        "detail": "leading and second pollutants are read at the worst-AQI hour itself"
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: none"
+        "detail": "classification: mist"
       },
       "frost": {
         "status": "ok",
@@ -225,8 +225,8 @@
         "detail": "pollen state (in season / out of season / not yet published / unavailable) must be read from the source itself; none of these states is a zero"
       },
       "official_warning": {
-        "status": "ok",
-        "detail": "1 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
+        "status": "caution",
+        "detail": "municipal warning applicability: caution; R8 JSON is per-phenomenon latest history, not a current full municipal snapshot; issue times can be old for ongoing event-driven warnings"
       }
     },
     "Takamatsu": {
@@ -247,12 +247,12 @@
         "detail": "24/24 hourly values in the window"
       },
       "uv": {
-        "status": "missing",
-        "detail": "uv_index not ready for the window"
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
       },
       "dust": {
-        "status": "missing",
-        "detail": "dust not ready for the window"
+        "status": "ok",
+        "detail": "24/24 hourly values in the window"
       },
       "wbgt": {
         "status": "ok",
@@ -267,16 +267,16 @@
         "detail": "(start,end] preceding-hour accumulations, 24/24"
       },
       "snow": {
-        "status": "caution",
-        "detail": "independent snowfall probability unavailable; snowfall amount alone must not be read as the snow risk"
+        "status": "ok",
+        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
       },
       "aqi": {
-        "status": "missing",
-        "detail": "AQI not ready"
+        "status": "ok",
+        "detail": "leading and second pollutants are read at the worst-AQI hour itself"
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: none"
+        "detail": "classification: mist"
       },
       "frost": {
         "status": "ok",
@@ -370,17 +370,16 @@
       "Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.",
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
-      "ecmwf/cyclone_product: request failed (404)",
-      "air_24h_ready: failed",
-      "snow_probability_inputs_ready: failed",
-      "regional_384h_sample_inputs_ready: failed"
+      "ecmwf/cyclone_product: request failed (404)"
     ],
-    "products_invalid": []
+    "products_invalid": [
+      "table3"
+    ]
   },
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 311209 bytes"
+      "detail": "PNG signature ok, 320496 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -388,7 +387,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 301469 bytes"
+      "detail": "PNG signature ok, 296831 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
@@ -403,12 +402,12 @@
       "detail": "7 pipe rows; shape ok; no <br>"
     },
     "table3": {
-      "status": "ok",
-      "detail": "0 pipe rows; shape ok; no <br>"
+      "status": "invalid",
+      "detail": "only 0 pipe rows; cyclone header 名称 absent"
     },
     "table4": {
       "status": "ok",
-      "detail": "7 pipe rows; shape ok; no <br>"
+      "detail": "12 pipe rows; shape ok; no <br>"
     }
   }
 }
