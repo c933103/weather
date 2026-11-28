@@ -1,24 +1,24 @@
 {
   "schema": "east_asia_weather_validation_v1",
-  "generated_at_utc": "2026-11-27T02:48:09.996098+00:00",
-  "target_date_jst": "2026-11-27",
+  "generated_at_utc": "2026-11-28T02:39:38.501482+00:00",
+  "target_date_jst": "2026-11-28",
   "cities": {
     "Hong Kong": {
       "temperature": {
-        "status": "ok",
-        "detail": "24/24 hourly values in the window"
+        "status": "missing",
+        "detail": "temperature_2m not ready for the window"
       },
       "apparent_temperature": {
-        "status": "ok",
-        "detail": "24/24 hourly values in the window"
+        "status": "missing",
+        "detail": "apparent_temperature not ready for the window"
       },
       "humidity": {
-        "status": "ok",
-        "detail": "24/24 hourly values in the window"
+        "status": "missing",
+        "detail": "relative_humidity_2m not ready for the window"
       },
       "pressure": {
-        "status": "ok",
-        "detail": "24/24 hourly values in the window"
+        "status": "missing",
+        "detail": "pressure_msl not ready for the window"
       },
       "uv": {
         "status": "ok",
@@ -29,32 +29,32 @@
         "detail": "24/24 hourly values in the window"
       },
       "wbgt": {
-        "status": "ok",
-        "detail": "Liljegren calculation on complete instantaneous inputs"
+        "status": "missing",
+        "detail": "Incomplete or misaligned instantaneous Liljegren inputs"
       },
       "wind": {
-        "status": "ok",
-        "detail": "sustained and gust series complete; mean, maximum and gust maximum are distinct statistics"
+        "status": "missing",
+        "detail": "wind series not ready"
       },
       "precipitation": {
-        "status": "ok",
-        "detail": "(start,end] preceding-hour accumulations, 24/24"
+        "status": "missing",
+        "detail": "precipitation not ready"
       },
       "snow": {
-        "status": "ok",
-        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
+        "status": "missing",
+        "detail": "snowfall not ready"
       },
       "aqi": {
         "status": "ok",
         "detail": "leading and second pollutants are read at the worst-AQI hour itself"
       },
       "fog": {
-        "status": "ok",
-        "detail": "classification: none"
+        "status": "missing",
+        "detail": "visibility series incomplete"
       },
       "frost": {
-        "status": "ok",
-        "detail": "IFS ground-surface (skin) temperature; the GFS 0–10 cm soil limb is non-equivalent and contextual only"
+        "status": "missing",
+        "detail": "surface temperature not ready"
       },
       "storm_surge": {
         "status": "caution",
@@ -65,8 +65,8 @@
         "detail": "official tide events on their own stated datum (timing and heights; never mixed with STOFS levels)"
       },
       "urban_inundation": {
-        "status": "ok",
-        "detail": "rainfall-rate screen negative; a negative screen — like an empty warning feed — does not establish safety"
+        "status": "missing",
+        "detail": "rainfall-rate screen unavailable"
       },
       "pollen": {
         "status": "missing",
@@ -75,20 +75,20 @@
     },
     "Taipei": {
       "temperature": {
-        "status": "ok",
-        "detail": "24/24 hourly values in the window"
+        "status": "missing",
+        "detail": "temperature_2m not ready for the window"
       },
       "apparent_temperature": {
-        "status": "ok",
-        "detail": "24/24 hourly values in the window"
+        "status": "missing",
+        "detail": "apparent_temperature not ready for the window"
       },
       "humidity": {
-        "status": "ok",
-        "detail": "24/24 hourly values in the window"
+        "status": "missing",
+        "detail": "relative_humidity_2m not ready for the window"
       },
       "pressure": {
-        "status": "ok",
-        "detail": "24/24 hourly values in the window"
+        "status": "missing",
+        "detail": "pressure_msl not ready for the window"
       },
       "uv": {
         "status": "ok",
@@ -99,32 +99,32 @@
         "detail": "24/24 hourly values in the window"
       },
       "wbgt": {
-        "status": "ok",
-        "detail": "Liljegren calculation on complete instantaneous inputs"
+        "status": "missing",
+        "detail": "Incomplete or misaligned instantaneous Liljegren inputs"
       },
       "wind": {
-        "status": "ok",
-        "detail": "sustained and gust series complete; mean, maximum and gust maximum are distinct statistics"
+        "status": "missing",
+        "detail": "wind series not ready"
       },
       "precipitation": {
-        "status": "ok",
-        "detail": "(start,end] preceding-hour accumulations, 24/24"
+        "status": "missing",
+        "detail": "precipitation not ready"
       },
       "snow": {
-        "status": "ok",
-        "detail": "snowfall amount, independent ensemble snowfall probability and snow depth carried as separate quantities"
+        "status": "missing",
+        "detail": "snowfall not ready"
       },
       "aqi": {
         "status": "ok",
         "detail": "leading and second pollutants are read at the worst-AQI hour itself"
       },
       "fog": {
-        "status": "ok",
-        "detail": "low visibility corroborated by humidity / dew-point spread / low cloud at the same hours"
+        "status": "missing",
+        "detail": "visibility series incomplete"
       },
       "frost": {
-        "status": "ok",
-        "detail": "IFS ground-surface (skin) temperature; the GFS 0–10 cm soil limb is non-equivalent and contextual only"
+        "status": "missing",
+        "detail": "surface temperature not ready"
       },
       "storm_surge": {
         "status": "ok",
@@ -135,8 +135,8 @@
         "detail": "official tide events on their own stated datum (timing and heights; never mixed with STOFS levels)"
       },
       "urban_inundation": {
-        "status": "ok",
-        "detail": "rainfall-rate screen negative; a negative screen — like an empty warning feed — does not establish safety"
+        "status": "missing",
+        "detail": "rainfall-rate screen unavailable"
       },
       "pollen": {
         "status": "missing",
@@ -147,12 +147,12 @@
         "detail": "0 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       },
       "wra_urban_warning": {
-        "status": "ok",
-        "detail": "WRA urban_inundation: ready; 0 alerts explicitly scoped to Taipei; separate from rainfall and GloFAS point screens"
+        "status": "missing",
+        "detail": "WRA urban_inundation: missing; 0 alerts explicitly scoped to Taipei; separate from rainfall and GloFAS point screens"
       },
       "wra_river_warning": {
-        "status": "ok",
-        "detail": "WRA river_level: ready; 0 alerts explicitly scoped to Taipei; separate from rainfall and GloFAS point screens"
+        "status": "missing",
+        "detail": "WRA river_level: missing; 0 alerts explicitly scoped to Taipei; separate from rainfall and GloFAS point screens"
       }
     },
     "Tokyo Minato Ward": {
@@ -225,8 +225,8 @@
         "detail": "pollen state (in season / out of season / not yet published / unavailable) must be read from the source itself; none of these states is a zero"
       },
       "official_warning": {
-        "status": "caution",
-        "detail": "municipal warning applicability: caution; R8 JSON is per-phenomenon latest history, not a current full municipal snapshot; issue times can be old for ongoing event-driven warnings"
+        "status": "ok",
+        "detail": "2 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       }
     },
     "Takamatsu": {
@@ -276,7 +276,7 @@
       },
       "fog": {
         "status": "ok",
-        "detail": "classification: mist"
+        "detail": "classification: none"
       },
       "frost": {
         "status": "ok",
@@ -299,8 +299,8 @@
         "detail": "pollen state (in season / out of season / not yet published / unavailable) must be read from the source itself; none of these states is a zero"
       },
       "official_warning": {
-        "status": "caution",
-        "detail": "municipal warning applicability: caution; R8 JSON is per-phenomenon latest history, not a current full municipal snapshot; issue times can be old for ongoing event-driven warnings"
+        "status": "ok",
+        "detail": "2 exact-area official alerts; zero is a current warning snapshot, not a 24h safety forecast"
       }
     }
   },
@@ -327,12 +327,12 @@
         "detail": "ready: exact-area alerts and issue/valid times retained"
       },
       "wra_urban_inundation": {
-        "status": "ok",
-        "detail": "ready: exact-area alerts and issue/valid times retained"
+        "status": "missing",
+        "detail": "missing: exact-area alerts and issue/valid times retained"
       },
       "wra_river_level": {
-        "status": "ok",
-        "detail": "ready: exact-area alerts and issue/valid times retained"
+        "status": "missing",
+        "detail": "missing: exact-area alerts and issue/valid times retained"
       }
     }
   },
@@ -363,14 +363,83 @@
         "text": "STOFS levels sit on the NOAA model datum: combined levels are compared only with the STOFS model's own astronomical tide, never with official tide-table datums."
       }
     ],
-    "new_source_failures": [],
+    "new_source_failures": [
+      "hong_kong/gfs",
+      "hong_kong/ifs",
+      "hong_kong/ifs_long",
+      "hong_kong/ifs_monsoon",
+      "taipei/gfs",
+      "taipei/ifs",
+      "taipei/ifs_monsoon",
+      "wra/inundation_warning",
+      "wra/river_level_warning"
+    ],
     "quality_state": "partial",
     "quality_reasons": [
+      "Hong Kong: temperature_2m has 0/24 values",
+      "Hong Kong: relative_humidity_2m has 0/24 values",
+      "Hong Kong: dew_point_2m has 0/24 values",
+      "Hong Kong: apparent_temperature has 0/24 values",
+      "Hong Kong: precipitation_probability has 0/24 values",
+      "Hong Kong: precipitation has 0/24 values",
+      "Hong Kong: rain has 0/24 values",
+      "Hong Kong: snowfall has 0/24 values",
+      "Hong Kong: snow_depth has 0/24 values",
+      "Hong Kong: wind_speed_10m has 0/24 values",
+      "Hong Kong: wind_direction_10m has 0/24 values",
+      "Hong Kong: wind_gusts_10m has 0/24 values",
+      "Hong Kong: pressure_msl has 0/24 values",
+      "Hong Kong: surface_pressure has 0/24 values",
+      "Hong Kong: visibility has 0/24 values",
+      "Hong Kong: cloud_cover_low has 0/24 values",
+      "Hong Kong: surface_temperature has 0/24 values",
+      "Hong Kong: shortwave_radiation has 0/24 values",
+      "Hong Kong: direct_radiation has 0/24 values",
+      "Hong Kong: diffuse_radiation has 0/24 values",
+      "Hong Kong: weather_code has 0/24 values",
+      "Hong Kong: shortwave_radiation_instant has 0/24 values",
+      "Hong Kong: direct_radiation_instant has 0/24 values",
+      "Hong Kong: diffuse_radiation_instant has 0/24 values",
+      "Taipei: temperature_2m has 0/24 values",
+      "Taipei: relative_humidity_2m has 0/24 values",
+      "Taipei: dew_point_2m has 0/24 values",
+      "Taipei: apparent_temperature has 0/24 values",
+      "Taipei: precipitation_probability has 0/24 values",
+      "Taipei: precipitation has 0/24 values",
+      "Taipei: rain has 0/24 values",
+      "Taipei: snowfall has 0/24 values",
+      "Taipei: snow_depth has 0/24 values",
+      "Taipei: wind_speed_10m has 0/24 values",
+      "Taipei: wind_direction_10m has 0/24 values",
+      "Taipei: wind_gusts_10m has 0/24 values",
+      "Taipei: pressure_msl has 0/24 values",
+      "Taipei: surface_pressure has 0/24 values",
+      "Taipei: visibility has 0/24 values",
+      "Taipei: cloud_cover_low has 0/24 values",
+      "Taipei: surface_temperature has 0/24 values",
+      "Taipei: shortwave_radiation has 0/24 values",
+      "Taipei: direct_radiation has 0/24 values",
+      "Taipei: diffuse_radiation has 0/24 values",
+      "Taipei: weather_code has 0/24 values",
+      "Taipei: shortwave_radiation_instant has 0/24 values",
+      "Taipei: direct_radiation_instant has 0/24 values",
+      "Taipei: diffuse_radiation_instant has 0/24 values",
       "GloFAS grids have not been matched to applicable river reaches and flood thresholds.",
       "Urban inundation warning/risk feeds still need independent city-specific validation; rainfall and GloFAS point discharge alone do not establish inundation depth.",
       "Weathernews pollen numeric arrays were retrieved, but the public pages are closed for spring-season preparation; operational applicability remains unverified.",
       "Regional 3x3 sample grids provide actual 384h mean/spread guidance; official cyclone tracks and warnings must be combined with the grid at 06:00. The grid alone is not complete spatial cyclone coverage.",
-      "ecmwf/cyclone_product: request failed (404)"
+      "hong_kong/ifs_long: request failed (None)",
+      "hong_kong/gfs: request failed (None)",
+      "hong_kong/ifs: request failed (None)",
+      "hong_kong/ifs_monsoon: request failed (None)",
+      "taipei/ifs: request failed (None)",
+      "taipei/ifs_monsoon: request failed (None)",
+      "taipei/gfs: request failed (None)",
+      "wra/river_level_warning: request failed (403)",
+      "wra/inundation_warning: request failed (403)",
+      "ecmwf/cyclone_product: request failed (404)",
+      "core_24h_ready: failed",
+      "chart_320h_ready: failed"
     ],
     "products_invalid": [
       "table3"
@@ -379,7 +448,7 @@
   "products": {
     "chart": {
       "status": "ok",
-      "detail": "PNG signature ok, 320496 bytes"
+      "detail": "PNG signature ok, 307467 bytes"
     },
     "chart_svg": {
       "status": "ok",
@@ -387,7 +456,7 @@
     },
     "chart_aifs": {
       "status": "ok",
-      "detail": "PNG signature ok, 296831 bytes"
+      "detail": "PNG signature ok, 295605 bytes"
     },
     "chart_aifs_svg": {
       "status": "ok",
