@@ -1,17 +1,185 @@
+import contextlib
 import datetime as dt
+import io
+import json
 import math
 import os
 from pathlib import Path
+import ssl
 import sys
+import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.parse
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from collect import (CITIES, MONSOON_FIELDS, UTC, all_city_hourly_tides_ready,
+from collect import (CITIES, CITY_FORECAST_URL, FORECAST_RECOVERY_TIMEOUT, MONSOON_FIELDS,
+                     UTC, all_city_hourly_tides_ready, collect, recover_city_forecasts, request,
                      audit_hourly, audit_long, build_jobs, combined_temperature,
                      hko_tides, numeric, redact_secrets, report_date,
                      source_freshness)
 from read_bundle import validate_manifest, verify_bytes
+
+
+class ForecastRecoveryTests(unittest.TestCase):
+    def test_first_pass_forecast_network_retries_keep_existing_backoff(self):
+        error = urllib.error.URLError(TimeoutError('The handshake operation timed out'))
+        with (patch('urllib.request.urlopen', side_effect=error) as fetch,
+              patch('collect.time.sleep') as sleep):
+            result = request(CITY_FORECAST_URL, {'models': 'ecmwf_ifs'})
+        self.assertEqual(fetch.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
+        self.assertTrue(result['transient_network_error'])
+        self.assertTrue(all(a['elapsed_seconds'] >= 0 for a in result['attempts']))
+
+    def test_http_and_certificate_errors_are_not_replayed(self):
+        jobs = build_jobs(dt.date(2026, 11, 28))
+        names = ['hong_kong/ifs', 'hong_kong/gfs', 'hong_kong/air']
+        errors = [
+            urllib.error.HTTPError(CITY_FORECAST_URL, 429, 'rate limited', {}, io.BytesIO(b'')),
+            urllib.error.URLError(ssl.SSLCertVerificationError('certificate verification failed')),
+            urllib.error.URLError(TimeoutError('The handshake operation timed out')),
+        ]
+        selected = {name: jobs[name] for name in names}
+        failed = {}
+        for name, error in zip(names, errors):
+            with patch('urllib.request.urlopen', side_effect=error):
+                failed[name] = request(jobs[name][0], jobs[name][1], retries=0)
+        with patch('collect.request') as fetch:
+            self.assertEqual(recover_city_forecasts(selected, failed, dict.fromkeys(names, 0)), {})
+        fetch.assert_not_called()
+
+    def test_deferred_forecast_retries_count_cooldown_from_the_failed_request(self):
+        name = 'taipei/ifs'
+        jobs = {name: build_jobs(dt.date(2026, 11, 28))[name]}
+        sources = {name: {'ok': False, 'transient_network_error': True, 'attempts': []}}
+
+        for cooldown, expected_start in [(20, 40), (60, 70)]:
+            with self.subTest(cooldown=cooldown):
+                now = 40
+
+                def sleep(seconds):
+                    nonlocal now
+                    now += seconds
+
+                def fetch_forecast(*args, **kwargs):
+                    self.assertEqual(now, expected_start)
+                    return {'ok': True, 'attempts': [{'ok': True}]}
+
+                with (patch('collect.random.uniform', return_value=cooldown) as draw,
+                      patch('collect.time.monotonic', side_effect=lambda: now),
+                      patch('collect.time.sleep', side_effect=sleep),
+                      patch('collect.request', side_effect=fetch_forecast)):
+                    recovered = recover_city_forecasts(jobs, sources, {name: 10})
+                draw.assert_called_once_with(20, 60)
+                self.assertTrue(recovered[name]['ok'])
+
+    def test_recovery_stops_starting_requests_after_its_budget(self):
+        names = ['hong_kong/ifs_long', 'taipei/ifs', 'taipei/gfs']
+        all_jobs = build_jobs(dt.date(2026, 11, 28))
+        jobs = {name: all_jobs[name] for name in names}
+        sources = {name: {'ok': False, 'transient_network_error': True,
+                          'url': CITY_FORECAST_URL, 'attempts': []} for name in names}
+        now = 0
+
+        def expire():
+            nonlocal now
+            now = 5
+
+        running = threading.Barrier(2, action=expire, timeout=2)
+
+        def slow_request(url, params, *, retries, timeout):
+            self.assertEqual((retries, timeout), (0, 5))
+            running.wait()
+            return {'ok': True, 'attempts': [{'ok': True}]}
+
+        with (patch('collect.FORECAST_RECOVERY_BUDGET', 5),
+              patch('collect.time.monotonic', side_effect=lambda: now),
+              patch('collect.request', side_effect=slow_request) as fetch):
+            recovered = recover_city_forecasts(jobs, sources, dict.fromkeys(names, -60))
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(set(recovered), {'taipei/ifs', 'taipei/gfs'})
+        self.assertTrue(all(r['ok'] for r in recovered.values()))
+
+    def test_late_recovery_feeds_existing_coverage_gates_and_writes_partial_manifest(self):
+        # Replay the seven exhausted starts, with healthy forecast traffic later
+        # in the first batch. Use the real collector, transport retry and audits.
+        day = dt.date(2026, 11, 28)
+        start = dt.datetime(2026, 11, 27, 21, tzinfo=UTC)
+        jobs = build_jobs(day)
+        missing = {'hong_kong/ifs', 'hong_kong/gfs', 'hong_kong/ifs_long', 'hong_kong/ifs_monsoon',
+                   'taipei/ifs', 'taipei/gfs', 'taipei/ifs_monsoon'}
+        by_url = {url + '?' + urllib.parse.urlencode(params): name
+                  for name, (url, params, _) in jobs.items() if url == CITY_FORECAST_URL}
+        lock = threading.Lock()
+
+        class Response(io.BytesIO):
+            status = 200
+            headers = {}
+
+        for permanent, incomplete in ((False, False), (True, False), (False, True)):
+            with self.subTest(permanent=permanent, incomplete=incomplete):
+                calls = {}
+                later_forecast_started = threading.Event()
+
+                def offline_get(req, timeout):
+                    url = req.full_url
+                    name = by_url.get(url)
+                    if name is None:
+                        raise urllib.error.HTTPError(url, 404, 'fixture', {}, io.BytesIO(b''))
+                    with lock:
+                        attempts = calls.setdefault(name, [])
+                        attempts.append(timeout)
+                        count = len(attempts)
+                    if name in missing:
+                        if count <= 3 or permanent:
+                            raise urllib.error.URLError(TimeoutError('The handshake operation timed out'))
+                        self.assertTrue(later_forecast_started.is_set())
+                    else:
+                        later_forecast_started.set()
+                    params = jobs[name][1]
+                    times = [(start + dt.timedelta(hours=h)).isoformat() for h in range(-24, 321)]
+                    hourly = {field: [1.0] * len(times) for field in params['hourly'].split(',')}
+                    if incomplete and name == 'taipei/ifs':
+                        hourly['pressure_msl'][24] = None
+                    return Response(json.dumps({'latitude': params['latitude'], 'longitude': params['longitude'],
+                                                'hourly': {'time': times, **hourly}}).encode())
+
+                with tempfile.TemporaryDirectory() as directory:
+                    out = Path(directory)
+                    with (patch('urllib.request.urlopen', side_effect=offline_get),
+                          patch('collect.FORECAST_RETRY_COOLDOWN', (0, 0)),
+                          patch('collect.time.sleep'), patch('coastal.collect_coastal', return_value={}),
+                          patch('collect.collect_tracks', return_value={'ok': False, 'status': 'unpublished'}),
+                          contextlib.redirect_stdout(io.StringIO())):
+                        raw = collect(day, out)
+                    manifest = json.loads((out / 'latest' / 'manifest.json').read_text())
+
+                self.assertEqual(manifest['target_date_jst'], day.isoformat())
+                self.assertEqual(manifest['quality']['state'], 'partial')  # Other fixture feeds are absent.
+                self.assertEqual(manifest['quality']['core_24h_ready'], not (permanent or incomplete))
+                self.assertEqual(manifest['quality']['gfs_24h_ready'], not permanent)
+                for name, (url, _, _) in jobs.items():
+                    if url != CITY_FORECAST_URL:
+                        continue
+                    if name not in missing:
+                        self.assertEqual(calls[name], [25])
+                        continue
+                    self.assertEqual(calls[name], [25, 25, 25, FORECAST_RECOVERY_TIMEOUT])
+                    source = raw['sources'][name]
+                    first, second, third, recovery = source['attempts']
+                    self.assertTrue(all(not a['ok'] and 'handshake' in a['error']['message']
+                                        for a in (first, second, third)))
+                    self.assertEqual(recovery['phase'], 'recovery')
+                    self.assertEqual(recovery['url'], first['url'])
+                    self.assertEqual(manifest['source_status'][name]['ok'], not permanent)
+                for city in ('Hong Kong', 'Taipei'):
+                    self.assertEqual(raw['cities'][city]['checks']['monsoon_7d']['ready'], not permanent)
+                if incomplete:
+                    pressure = raw['cities']['Taipei']['checks']['core_24h']['variables']['pressure_msl']
+                    self.assertEqual(pressure['valid_slots'], 23)
 
 
 class CoverageTests(unittest.TestCase):

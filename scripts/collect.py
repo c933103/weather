@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures as futures
 import datetime as dt
+import errno
 import hashlib
 import html
 from html.parser import HTMLParser
@@ -16,7 +17,9 @@ import json
 import math
 import os
 from pathlib import Path
+import random
 import re
+import socket
 import sys
 import time
 import tempfile
@@ -64,6 +67,10 @@ MONSOON_FIELDS = (
     'temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,'
     'wind_gusts_10m'
 ).split(',')
+CITY_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
+FORECAST_RETRY_COOLDOWN = (20, 60)
+FORECAST_RECOVERY_BUDGET = 75
+FORECAST_RECOVERY_TIMEOUT = 8
 
 
 def iso_now():
@@ -110,7 +117,16 @@ def audit_hourly(hourly, fields, start, hours=24):
     return status
 
 
-def request(url, params=None, retries=2, method='GET'):
+def transient_network_error(exc):
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    return (isinstance(reason, (TimeoutError, ConnectionResetError, ConnectionAbortedError,
+                               BrokenPipeError))
+            or (isinstance(reason, socket.gaierror) and reason.errno == socket.EAI_AGAIN)
+            or (isinstance(reason, OSError) and reason.errno in (
+                errno.ETIMEDOUT, errno.ECONNREFUSED, errno.ENETUNREACH, errno.EHOSTUNREACH)))
+
+
+def request(url, params=None, retries=2, method='GET', *, timeout=25):
     if params and method == 'GET':
         url += ('&' if '?' in url else '?') + urllib.parse.urlencode(params)
     records = []
@@ -119,13 +135,14 @@ def request(url, params=None, retries=2, method='GET'):
                   'http_status': None, 'response': None, 'error': None,
                   'issued_at_utc': None, 'model_initialized_at_utc': None}
         retry_after = None
+        started = time.monotonic()
         try:
             req = urllib.request.Request(url, data=urllib.parse.urlencode(params or {}).encode() if method == 'POST' else None, headers={
                 'User-Agent': 'EastAsiaWeatherDaily/3.0 (github.com/c933103/weather)',
                 'Accept': 'application/json,text/plain,text/html;q=0.8,*/*;q=0.5',
                 **({'X-Requested-With': 'XMLHttpRequest', 'Referer': 'https://ocean.cwa.gov.tw/V2/sailing_forecast'} if method == 'POST' and url.startswith('https://ocean.cwa.gov.tw/') else {}),
             })
-            with urllib.request.urlopen(req, timeout=25) as response:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
                 body = response.read(12_000_000)
                 result['http_status'] = response.status
                 result['response_content_type'] = response.headers.get('Content-Type')
@@ -147,6 +164,8 @@ def request(url, params=None, retries=2, method='GET'):
             retry_after = exc.headers.get('Retry-After')
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             result['error'] = {'code': 'NETWORK_ERROR', 'message': str(exc)[:500]}
+            result['transient_network_error'] = transient_network_error(exc)
+        result['elapsed_seconds'] = round(time.monotonic() - started, 3)
         records.append({k: v for k, v in result.items() if k != 'response'})
         if result['ok'] or result['http_status'] not in (None, 429, 500, 502, 503, 504):
             break
@@ -159,6 +178,53 @@ def request(url, params=None, retries=2, method='GET'):
             time.sleep(delay)
     result['attempts'] = records
     return result
+
+
+def recover_city_forecasts(jobs, sources, finished_at):
+    """Give missing city forecasts one fresh attempt after the first batch."""
+    priority = {'ifs': 0, 'gfs': 0, 'ifs_long': 1, 'ifs_monsoon': 2}
+    eligible = [name for name, (url, _, numerical_job) in jobs.items()
+               if numerical_job is True and url == CITY_FORECAST_URL
+               and name.rsplit('/', 1)[-1] in priority
+               and not sources[name]['ok'] and sources[name].get('transient_network_error')]
+    if not eligible:
+        return {}
+    # Count the cooldown from when each first-pass request finished. The
+    # rest of that batch can run during the cooldown.
+    ready_at = {name: finished_at[name] + random.uniform(*FORECAST_RETRY_COOLDOWN)
+                for name in eligible}
+    eligible.sort(key=lambda name: (priority[name.rsplit('/', 1)[-1]], ready_at[name]))
+    deadline = time.monotonic() + FORECAST_RECOVERY_BUDGET
+
+    def retry(name):
+        url, params, _ = jobs[name]
+        delay = ready_at[name] - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        # urllib's timeout applies to blocking socket operations.
+        return request(url, params, retries=0, timeout=min(FORECAST_RECOVERY_TIMEOUT, remaining))
+
+    recovered = {}
+    with futures.ThreadPoolExecutor(max_workers=2) as pool:
+        pending = {pool.submit(retry, name): name for name in eligible}
+        for job in futures.as_completed(pending):
+            name = pending[job]
+            original = sources[name]
+            try:
+                result = job.result()
+            except Exception as exc:
+                result = {'ok': False, 'http_status': None, 'response': None,
+                          'url': original['url'], 'fetched_at_utc': iso_now(),
+                          'error': {'code': 'ADAPTER_EXCEPTION', 'message': str(exc)[:300]}}
+                result['attempts'] = [{k: v for k, v in result.items() if k != 'response'}]
+            if result is not None:
+                result['attempts'] = original['attempts'] + [
+                    {**attempt, 'phase': 'recovery'} for attempt in result['attempts']]
+                recovered[name] = result
+    return recovered
 
 
 def numerical(url, params):
@@ -792,7 +858,7 @@ def build_jobs(day):
     jobs = {}
     for key, (_, lat, lon, _) in CITIES.items():
         coord = {'latitude': lat, 'longitude': lon, 'timezone': 'GMT'}
-        jobs[f'{key}/ifs'] = ('https://api.open-meteo.com/v1/forecast', {
+        jobs[f'{key}/ifs'] = (CITY_FORECAST_URL, {
             **coord, 'models': 'ecmwf_ifs', 'hourly': ','.join(CORE_FIELDS),
             'forecast_days': 3, 'past_days': 2, 'wind_speed_unit': 'ms', 'precipitation_unit': 'mm'}, True)
         # Dedicated long IFS series for the per-city monsoon digest ONLY:
@@ -801,7 +867,7 @@ def build_jobs(day):
         # runs forecast_days 10 / past_days 1 with just MONSOON_FIELDS.
         # No other product reads this series; the 24-hour products, the
         # charts and every other calculation keep using the core series.
-        jobs[f'{key}/ifs_monsoon'] = ('https://api.open-meteo.com/v1/forecast', {
+        jobs[f'{key}/ifs_monsoon'] = (CITY_FORECAST_URL, {
             **coord, 'models': 'ecmwf_ifs', 'hourly': ','.join(MONSOON_FIELDS),
             'forecast_days': 10, 'past_days': 1, 'wind_speed_unit': 'ms'}, True)
         # The pinned 06 JST report starts on the preceding UTC day if
@@ -811,11 +877,11 @@ def build_jobs(day):
             'forecast_days': 3, 'past_days': 1}, True)
         # NOAA GFS as the independent second model for every city: cross-check
         # for the ECMWF IFS values and the frost limb (soil temperature).
-        jobs[f'{key}/gfs'] = ('https://api.open-meteo.com/v1/forecast', {
+        jobs[f'{key}/gfs'] = (CITY_FORECAST_URL, {
             **coord, 'models': 'gfs_seamless', 'hourly': ','.join(GFS_FIELDS),
             'forecast_days': 3, 'past_days': 2, 'wind_speed_unit': 'ms', 'precipitation_unit': 'mm'}, True)
         if key in ('hong_kong', 'tokyo_minato'):
-            jobs[f'{key}/ifs_long'] = ('https://api.open-meteo.com/v1/forecast', {
+            jobs[f'{key}/ifs_long'] = (CITY_FORECAST_URL, {
                 **coord, 'models': 'ecmwf_ifs', 'hourly': 'temperature_2m,weather_code',
                 'forecast_days': 16, 'past_days': 1}, True)
             jobs[f'{key}/ec46'] = ('https://seasonal-api.open-meteo.com/v1/seasonal', {
@@ -946,8 +1012,10 @@ def collect(day, out):
                                for stream in IFS_CYCLONE_STREAMS}
         pending = {pool.submit((lambda u, p: request(u, p, method='POST')) if numeric_job == 'POST' else numerical if numeric_job else request, url, params): name
                    for name, (url, params, numeric_job) in jobs.items()}
+        finished_at = {}
         for job in futures.as_completed(pending):
             name = pending[job]
+            finished_at[name] = time.monotonic()
             try:
                 source = job.result()
             except Exception as exc:
@@ -957,6 +1025,10 @@ def collect(day, out):
             root['sources'][name] = source_freshness(source, now, 24*35 if '27_day' in name else 36)
             print(json.dumps({'source': name, 'http': source.get('http_status'),
                               'ok': source['ok'], 'freshness': source.get('freshness')}), flush=True)
+        for name, source in recover_city_forecasts(jobs, root['sources'], finished_at).items():
+            root['sources'][name] = source_freshness(source, now)
+            print(json.dumps({'source': name, 'phase': 'recovery', 'http': source.get('http_status'),
+                              'ok': source['ok']}), flush=True)
         try:
             coastal = coastal_future.result()
         except Exception as exc:
